@@ -1,29 +1,30 @@
 # Shaker Control System
 
-Arduino Mega + Python GUI control and data-acquisition system for a laboratory shaker setup.
+Arduino Mega + Python GUI control and data-acquisition system for the laboratory shaker setup.
 
-## Verified hardware
+## Current hardware
 
 - Arduino Mega
 - FAULHABER 2232 024S motor
 - FAULHABER IE2-512 encoder
 - L298N H-bridge motor driver
-- SingleTact CS15-450N force sensor with SingleTact electronics board
+- SingleTact CS8-10N calibrated force sensor with its matched electronics board
 - External 24 V motor supply
 
-## Current verified functionality
+## Current behavior
 
 - Motor UP/DOWN control from the GUI
-- Immediate motor stop when UP/DOWN is released
-- GUI motor command limited to 5%
-- Arduino firmware independently clamps motor commands to 5%
+- Motion commands limited to a maximum of 5% in both GUI and Arduino firmware
+- Releasing UP/DOWN engages active electrical braking
+- L298N remains powered from the 24 V supply during normal braking
+- ESTOP disables ENA and uses coast behavior
 - Encoder position feedback
 - Manual position lock
-- SingleTact detected at I2C address 0x04
-- Force tare
-- Real-time force graph in the GUI
-- CSV acquisition framework
-- Piezo channel reserved but not connected yet
+- SingleTact I2C address 0x04
+- Real-time force plot in Newtons
+- Manual force tare
+- No automatic force tare at Arduino startup or acquisition START
+- Piezo channel is reserved but not integrated yet
 
 ## Wiring
 
@@ -38,20 +39,20 @@ Mega GND -> L298N GND
 
 Motor -> L298N OUT1/OUT2.
 
-The L298N motor supply is 24 V.
+The L298N motor supply remains connected to 24 V.
 
-Important: with the current module configuration, do not connect Arduino 5V to the L298N 5V pin. The grounds must remain common.
+Important: do not connect Arduino 5V to the L298N 5V pin in the current module configuration. Grounds must remain common.
 
 ### Encoder
 
 ```text
-Encoder A -> Mega D18
-Encoder B -> Mega D19
+Encoder A   -> Mega D18
+Encoder B   -> Mega D19
 Encoder +5V -> Mega 5V
 Encoder GND -> Mega GND
 ```
 
-### SingleTact CS15-450N electronics board
+### SingleTact CS8-10N
 
 ```text
 SingleTact Pin 1 -> Mega 5V
@@ -61,6 +62,20 @@ SingleTact Pin 6 -> Mega D20 / SDA
 ```
 
 Default I2C address: `0x04`.
+
+## Force conversion
+
+The firmware follows the SingleTact data format by reading register 128 and using the fixed digital offset `0xFF = 255`.
+
+For the CS8-10N:
+
+```text
+force_N = (raw - 255 - manual_tare_offset) * 10 / 512
+```
+
+The calibrated factory baseline is preserved by default. Manual TARE should only be pressed when the sensor is completely unloaded.
+
+A 100 g mass produces approximately 0.981 N under standard gravity.
 
 ## Repository layout
 
@@ -83,12 +98,12 @@ python -m pip install -r requirements.txt
 python GUI/shaker_control_gui.py
 ```
 
-Use 115200 baud.
+Serial baud rate: `115200`.
 
-## Serial telemetry
+## Telemetry
 
 ```text
 DATA,time_s,piezo_v,force_n,position_counts,motor_state
 ```
 
-The force sensor is currently transmitted at up to 100 Hz. The piezo field is currently 0 until the piezo sensor is integrated.
+Combined GUI telemetry is currently limited to 100 Hz for the force-sensor integration.
