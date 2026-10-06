@@ -56,7 +56,8 @@ DEFAULT_BAUD = 115200
 # MOTOR_UP,<0..5>      # GUI safety cap
 # MOTOR_DOWN,<0..5>    # GUI safety cap
 # MOTOR_LOCK,<tolerance_counts>
-# MOTOR_STOP
+# MOTOR_BRAKE
+# MOTOR_STOP             # backward-compatible alias for MOTOR_BRAKE
 # ESTOP
 # SET_LOCK_TOL,<tolerance_counts>
 #
@@ -287,7 +288,7 @@ class MainWindow(QMainWindow):
             "V",
         )
         self.force_panel = SignalPanel(
-            "2) Force sensor - SingleTact CS15-450N",
+            "2) Force sensor - SingleTact CS8-10N (calibrated)",
             "Force",
             "N",
         )
@@ -324,7 +325,7 @@ class MainWindow(QMainWindow):
         motor_layout.addWidget(self.up_btn, 1, 0, 1, 2)
         motor_layout.addWidget(self.down_btn, 1, 2, 1, 2)
 
-        self.motor_stop_btn = QPushButton("STOP MOTOR")
+        self.motor_stop_btn = QPushButton("BRAKE MOTOR")
         self.motor_stop_btn.clicked.connect(self.stop_motor)
         motor_layout.addWidget(self.motor_stop_btn, 1, 4)
 
@@ -332,7 +333,7 @@ class MainWindow(QMainWindow):
         self.position_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         motor_layout.addWidget(self.position_label, 2, 0, 1, 2)
 
-        self.motor_state_label = QLabel("Motor state: STOPPED")
+        self.motor_state_label = QLabel("Motor state: BRAKED")
         self.motor_state_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         motor_layout.addWidget(self.motor_state_label, 2, 2, 1, 2)
 
@@ -423,9 +424,11 @@ class MainWindow(QMainWindow):
         force_box = QGroupBox("Force sensor")
         force_form = QFormLayout(force_box)
 
-        self.auto_tare_check = QCheckBox("Automatically tare force when START is pressed")
-        self.auto_tare_check.setChecked(True)
-        force_form.addRow(self.auto_tare_check)
+        force_note = QLabel(
+            "No automatic tare. Use TARE FORCE only when the sensor is completely unloaded."
+        )
+        force_note.setWordWrap(True)
+        force_form.addRow(force_note)
 
         root.addWidget(force_box)
 
@@ -490,7 +493,7 @@ class MainWindow(QMainWindow):
         self.force_ymin.setDecimals(2)
         self.force_ymax.setDecimals(2)
         self.force_ymin.setValue(0.0)
-        self.force_ymax.setValue(450.0)
+        self.force_ymax.setValue(10.0)
 
         scale_grid.addWidget(QLabel("Signal"), 0, 0)
         scale_grid.addWidget(QLabel("Auto"), 0, 1)
@@ -781,8 +784,8 @@ class MainWindow(QMainWindow):
         else:
             self.csv_status_label.setText("CSV saving: OFF")
 
-        if self.auto_tare_check.isChecked():
-            self.tare_force()
+        # Do not automatically tare at START. The calibrated SingleTact
+        # baseline is preserved unless the user explicitly presses TARE FORCE.
 
         if self.demo_mode:
             self.demo_t = 0.0
@@ -984,11 +987,11 @@ class MainWindow(QMainWindow):
             self.demo_direction = 0
             self.demo_locked = False
         else:
-            self.send_command("MOTOR_STOP")
+            self.send_command("MOTOR_BRAKE")
 
-        self.motor_state = "STOPPED"
-        self.motor_state_label.setText("Motor state: STOPPED")
-        self.status_message("UP/DOWN released: MOTOR_STOP sent")
+        self.motor_state = "BRAKED"
+        self.motor_state_label.setText("Motor state: BRAKED")
+        self.status_message("UP/DOWN released: active electrical brake engaged")
 
     def lock_current_position(self) -> None:
         if self.estop_active:
@@ -996,115 +999,3 @@ class MainWindow(QMainWindow):
 
         tolerance = self.lock_tolerance_spin.value()
         self.lock_tolerance_counts = tolerance
-
-        if self.demo_mode:            self.demo_direction = 0
-            self.demo_locked = True
-        else:
-            self.send_command(f"MOTOR_LOCK,{tolerance}")
-
-        self.motor_state = "LOCKED"
-        self.motor_state_label.setText("Motor state: LOCKED")
-        self.status_message(f"Position lock requested (±{tolerance} counts)")
-
-    def stop_motor(self) -> None:
-        # An explicit stop cancels any previously scheduled lock.
-        self.lock_delay_timer.stop()
-
-        if self.demo_mode:
-            self.demo_direction = 0
-            self.demo_locked = False
-        else:
-            self.send_command("MOTOR_STOP")
-
-        self.motor_state = "STOPPED"
-        self.motor_state_label.setText("Motor state: STOPPED")
-
-    def emergency_stop(self) -> None:
-        self.estop_active = True
-        self.lock_delay_timer.stop()
-
-        if self.demo_mode:
-            self.demo_direction = 0
-            self.demo_locked = False
-        else:
-            self.send_command("ESTOP")
-
-        self.motor_state = "E-STOP"
-        self.motor_state_label.setText("Motor state: E-STOP")
-        self.status_message("EMERGENCY STOP ACTIVE")
-
-        # Stop acquisition too, as requested for the global emergency state.
-        if self.acquiring:
-            self.stop_acquisition()
-
-    # =====================================================================
-    # Demo mode
-    # =====================================================================
-    def generate_demo_sample(self) -> None:
-        if not self.acquiring:
-            return
-
-        dt = 1.0 / max(1, self.sample_rate_hz)
-        self.demo_t += dt
-
-        # Raw-looking piezo waveform: shaker-like sinusoid + noise + harmonic.
-        piezo = (
-            1.7
-            + 0.55 * math.sin(2 * math.pi * 7.5 * self.demo_t)
-            + 0.18 * math.sin(2 * math.pi * 41.0 * self.demo_t)
-            + random.gauss(0.0, 0.035)
-        )
-
-        # Example force in N.
-        force = (
-            80.0
-            + 20.0 * math.sin(2 * math.pi * 1.4 * self.demo_t)
-            + 4.0 * math.sin(2 * math.pi * 8.0 * self.demo_t)
-            + random.gauss(0.0, 0.8)
-        )
-        force = max(0.0, min(450.0, force))
-
-        # Simulated relative motor position.
-        if self.demo_direction != 0:
-            step = max(1, int(self.speed_slider.value()))
-            self.demo_position += self.demo_direction * step
-            state = "UP" if self.demo_direction > 0 else "DOWN"
-        elif self.demo_locked:
-            # Tiny disturbance around locked position.
-            disturbance = random.choice([0, 0, 0, 0, 1, -1])
-            self.demo_position += disturbance
-            state = "LOCKED"
-        else:
-            state = "STOPPED"
-
-        self.add_sample(self.demo_t, piezo, force, self.demo_position, state)
-
-    # =====================================================================
-    # Helpers / close
-    # =====================================================================
-    def status_message(self, text: str) -> None:
-        self.status_label.setText(text)
-
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt API name)
-        try:
-            if self.acquiring:
-                self.stop_acquisition()
-            if self.serial.isOpen():
-                self.send_command("MOTOR_STOP")
-                self.serial.close()
-            self.flush_csv()
-            self.close_csv_file()
-        finally:
-            event.accept()
-
-
-def main() -> None:
-    app = QApplication(sys.argv)
-    pg.setConfigOptions(antialias=False)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
-
-
-if __name__ == "__main__":
-    main()
