@@ -64,16 +64,16 @@ enum MotorMode
   MODE_BRAKED,
   MODE_UP,
   MODE_DOWN,
-  MODE_LOCKED,
+  MODE_POSITION_HOLD,
   MODE_ESTOP
 };
 
 MotorMode motorMode = MODE_BRAKED;
 
-// -------------------- Position lock --------------------
+// -------------------- Encoder position brake --------------------
 long targetPosition = 0;
 int lockToleranceCounts = 2;
-const int LOCK_PWM = 13;  // about 5% of 255
+const int POSITION_HOLD_PWM = 13;  // about 5% of 255
 
 // -------------------- Acquisition --------------------
 bool acquisitionRunning = false;
@@ -97,7 +97,7 @@ const char* motorStateName()
     case MODE_BRAKED: return "BRAKED";
     case MODE_UP:     return "UP";
     case MODE_DOWN:   return "DOWN";
-    case MODE_LOCKED: return "LOCKED";
+    case MODE_POSITION_HOLD: return "POSITION_HOLD";
     case MODE_ESTOP:  return "ESTOP";
     default:          return "UNKNOWN";
   }
@@ -290,28 +290,37 @@ bool tareForceSensor()
 
 
 // ============================================================
-// Manual encoder position lock
+// Encoder-based position brake
 // ============================================================
 
-void updatePositionLock()
+void updatePositionBrake()
 {
-  if (motorMode != MODE_LOCKED)
+  if (motorMode != MODE_POSITION_HOLD)
     return;
 
   long currentPosition = getEncoderCount();
   long error = targetPosition - currentPosition;
 
+  // Verified hardware direction mapping:
+  //   MOTOR_UP   -> encoder count DECREASES
+  //   MOTOR_DOWN -> encoder count INCREASES
+  //
+  // Therefore, if currentPosition is below targetPosition (positive error),
+  // we must drive DOWN to increase the encoder count.
+  // If currentPosition is above targetPosition (negative error),
+  // we must drive UP to decrease the encoder count.
+  // The correction drive remains limited to the same 5% safety cap.
   if (error > lockToleranceCounts)
   {
-    motorUpPWM(LOCK_PWM);
+    motorDownPWM(POSITION_HOLD_PWM);
   }
   else if (error < -lockToleranceCounts)
   {
-    motorDownPWM(LOCK_PWM);
+    motorUpPWM(POSITION_HOLD_PWM);
   }
   else
   {
-    // Inside the allowed position band, electrically brake the motor.
+    // Inside the tolerance band, use the ordinary dynamic electrical brake.
     motorBrake();
   }
 }
@@ -381,6 +390,7 @@ void processCommand(String command)
     int speed = command.substring(9).toInt();
     speed = constrain(speed, 0, MAX_MOTOR_PERCENT);
 
+    // Manual motion always cancels encoder-based position hold.
     motorMode = MODE_UP;
     motorUpPWM(percentToPWM(speed));
 
@@ -403,6 +413,7 @@ void processCommand(String command)
     int speed = command.substring(11).toInt();
     speed = constrain(speed, 0, MAX_MOTOR_PERCENT);
 
+    // Manual motion always cancels encoder-based position hold.
     motorMode = MODE_DOWN;
     motorDownPWM(percentToPWM(speed));
 
@@ -432,9 +443,10 @@ void processCommand(String command)
   }
 
   // ----------------------------------------------------------
-  // Manual position lock
+  // Encoder-based position brake
   // ----------------------------------------------------------
-  if (command.startsWith("MOTOR_LOCK,"))
+  if (command.startsWith("MOTOR_POSITION_BRAKE,") ||
+      command.startsWith("MOTOR_LOCK,"))
   {
     if (motorMode == MODE_ESTOP)
     {
@@ -442,16 +454,41 @@ void processCommand(String command)
       return;
     }
 
-    int tolerance = command.substring(11).toInt();
-    tolerance = max(0, tolerance);
+    int tolerance;
+    if (command.startsWith("MOTOR_POSITION_BRAKE,"))
+      tolerance = command.substring(21).toInt();
+    else
+      tolerance = command.substring(11).toInt();
 
+    tolerance = max(0, tolerance);
     lockToleranceCounts = tolerance;
+
+    // Capture the exact current encoder position only when the button is pressed.
     targetPosition = getEncoderCount();
-    motorMode = MODE_LOCKED;
+    motorMode = MODE_POSITION_HOLD;
     motorBrake();
 
-    Serial.print("STATUS,MOTOR_LOCKED,");
-    Serial.println(targetPosition);
+    Serial.print("STATUS,POSITION_BRAKE_ON,");
+    Serial.print(targetPosition);
+    Serial.print(",TOL,");
+    Serial.println(lockToleranceCounts);
+    return;
+  }
+
+  // ----------------------------------------------------------
+  // Release encoder position brake; keep ordinary dynamic brake
+  // ----------------------------------------------------------
+  if (command == "MOTOR_POSITION_RELEASE")
+  {
+    if (motorMode == MODE_ESTOP)
+    {
+      Serial.println("ERROR,ESTOP_ACTIVE");
+      return;
+    }
+
+    motorBrake();
+    motorMode = MODE_BRAKED;
+    Serial.println("STATUS,POSITION_BRAKE_OFF");
     return;
   }
 
@@ -589,7 +626,7 @@ void setup()
   forceTareOffsetCounts = 0.0f;
   latestForceN = 0.0f;
 
-  Serial.println("STATUS,SYSTEM_READY,BRAKED,CS8-10N,FACTORY_ZERO");
+  Serial.println("STATUS,SYSTEM_READY,BRAKED,CS8-10N,FACTORY_ZERO,POSITION_BRAKE_READY");
 }
 
 
@@ -600,7 +637,7 @@ void setup()
 void loop()
 {
   readSerialCommands();
-  updatePositionLock();
+  updatePositionBrake();
 
   if (acquisitionRunning)
   {
