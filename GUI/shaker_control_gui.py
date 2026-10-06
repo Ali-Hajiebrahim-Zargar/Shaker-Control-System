@@ -46,7 +46,7 @@ DEFAULT_BAUD = 115200
 # Arduino -> GUI, one sample per line:
 # DATA,<time_s>,<piezo_v>,<force_n>,<position_counts>,<motor_state>
 # Example:
-# DATA,1.234000,0.8421,12.55,1532,LOCKED
+# DATA,1.234000,0.8421,1.25,1532,POSITION_HOLD
 #
 # GUI -> Arduino commands:
 # START,<sample_rate_hz>
@@ -55,7 +55,9 @@ DEFAULT_BAUD = 115200
 # MOTOR_SPEED,<0..5>   # GUI safety cap
 # MOTOR_UP,<0..5>      # GUI safety cap
 # MOTOR_DOWN,<0..5>    # GUI safety cap
-# MOTOR_LOCK,<tolerance_counts>
+# MOTOR_POSITION_BRAKE,<tolerance_counts>
+# MOTOR_POSITION_RELEASE
+# MOTOR_LOCK,<tolerance_counts>   # backward-compatible alias
 # MOTOR_BRAKE
 # MOTOR_STOP             # backward-compatible alias for MOTOR_BRAKE
 # ESTOP
@@ -193,6 +195,8 @@ class MainWindow(QMainWindow):
         self.demo_position = 0
         self.demo_direction = 0
         self.demo_locked = False
+        self.position_brake_active = False
+        self.position_brake_target = None
 
         # -------------------- UI --------------------
         tabs = QTabWidget()
@@ -219,14 +223,6 @@ class MainWindow(QMainWindow):
 
         self.demo_timer = QTimer(self)
         self.demo_timer.timeout.connect(self.generate_demo_sample)
-
-        # Delay timer used after releasing UP/DOWN.
-        # The motor is stopped immediately on release, then the current
-        # encoder position is captured and locked after a short settling time.
-        self.lock_delay_timer = QTimer(self)
-        self.lock_delay_timer.setSingleShot(True)
-        self.lock_delay_timer.setInterval(150)
-        self.lock_delay_timer.timeout.connect(self.lock_current_position)
 
         self.refresh_ports()
         self.apply_settings_to_runtime()
@@ -337,9 +333,13 @@ class MainWindow(QMainWindow):
         self.motor_state_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         motor_layout.addWidget(self.motor_state_label, 2, 2, 1, 2)
 
-        self.lock_btn = QPushButton("LOCK CURRENT POSITION")
-        self.lock_btn.clicked.connect(self.lock_current_position)
-        motor_layout.addWidget(self.lock_btn, 2, 4)
+        self.position_brake_btn = QPushButton("POSITION BRAKE")
+        self.position_brake_btn.setMinimumHeight(42)
+        self.position_brake_btn.clicked.connect(self.toggle_position_brake)
+        motor_layout.addWidget(self.position_brake_btn, 2, 4)
+
+        self.position_brake_target_label = QLabel("Position brake target: --")
+        motor_layout.addWidget(self.position_brake_target_label, 3, 3, 1, 2)
 
         self.force_tare_btn = QPushButton("TARE FORCE")
         self.force_tare_btn.clicked.connect(self.tare_force)
@@ -349,7 +349,7 @@ class MainWindow(QMainWindow):
         motor_layout.addWidget(self.last_sample_label, 3, 1, 1, 2)
 
         self.csv_status_label = QLabel("CSV saving: OFF")
-        motor_layout.addWidget(self.csv_status_label, 3, 3, 1, 2)
+        motor_layout.addWidget(self.csv_status_label, 4, 3, 1, 2)
 
         motor_layout.setColumnStretch(1, 1)
         motor_layout.setColumnStretch(3, 1)
@@ -451,14 +451,14 @@ class MainWindow(QMainWindow):
         root.addWidget(save_box)
 
         # ---------- Motor ----------
-        motor_box = QGroupBox("Motor / position lock")
+        motor_box = QGroupBox("Motor / position brake")
         motor_form = QFormLayout(motor_box)
 
         self.lock_tolerance_spin = QSpinBox()
         self.lock_tolerance_spin.setRange(0, 1000)
         self.lock_tolerance_spin.setValue(2)
         self.lock_tolerance_spin.setSuffix(" encoder counts")
-        motor_form.addRow("Position-lock tolerance:", self.lock_tolerance_spin)
+        motor_form.addRow("Position-brake tolerance:", self.lock_tolerance_spin)
 
         self.limit_switch_check = QCheckBox("Use upper and lower limit switches")
         self.limit_switch_check.setChecked(True)
@@ -754,6 +754,30 @@ class MainWindow(QMainWindow):
             self.add_sample(t, piezo_v, force_n, position_counts, motor_state)
 
         elif parts[0] == "STATUS":
+            status_code = parts[1] if len(parts) > 1 else ""
+
+            if status_code in {"POSITION_BRAKE_ON", "MOTOR_LOCKED"}:
+                self.position_brake_active = True
+                self.position_brake_btn.setText("RELEASE POSITION BRAKE")
+                if len(parts) > 2:
+                    try:
+                        self.position_brake_target = int(float(parts[2]))
+                        self.position_brake_target_label.setText(
+                            f"Position brake target: {self.position_brake_target} counts"
+                        )
+                    except ValueError:
+                        pass
+                self.motor_state = "POSITION_HOLD"
+                self.motor_state_label.setText("Motor state: POSITION_HOLD")
+
+            elif status_code in {"POSITION_BRAKE_OFF", "MOTOR_BRAKED"}:
+                self.position_brake_active = False
+                self.position_brake_target = None
+                self.position_brake_btn.setText("POSITION BRAKE")
+                self.position_brake_target_label.setText("Position brake target: --")
+                self.motor_state = "BRAKED"
+                self.motor_state_label.setText("Motor state: BRAKED")
+
             self.status_message(", ".join(parts[1:]))
 
         elif parts[0] == "ERROR":
@@ -944,58 +968,33 @@ class MainWindow(QMainWindow):
 
         self.send_command(f"MOTOR_SPEED,{value}")
 
+    def _set_position_brake_ui(self, active: bool, target: int | None = None) -> None:
+        self.position_brake_active = active
+        if active:
+            self.position_brake_btn.setText("RELEASE POSITION BRAKE")
+            self.position_brake_target = target
+            if target is None:
+                self.position_brake_target_label.setText("Position brake target: current position")
+            else:
+                self.position_brake_target_label.setText(
+                    f"Position brake target: {target} counts"
+                )
+        else:
+            self.position_brake_btn.setText("POSITION BRAKE")
+            self.position_brake_target = None
+            self.position_brake_target_label.setText("Position brake target: --")
+
     def start_motor_motion(self, direction: str) -> None:
         if self.estop_active:
             return
-
-        # If the user presses UP/DOWN again before a delayed lock occurs,
-        # cancel that pending lock so it cannot interrupt the new movement.
-        self.lock_delay_timer.stop()
 
         if not self.connected:
             QMessageBox.warning(self, APP_TITLE, "Connect to the controller first.")
             return
 
-        # GUI hard limit: UP/DOWN commands can never exceed 5%.
+        # UP/DOWN always cancels position brake. It is never re-enabled
+        # automatically when the button is released.
+        self._set_position_brake_ui(False)
+
         speed = max(0, min(5, self.speed_slider.value()))
-
         if speed <= 0:
-            self.status_message("Motor speed is 0%. Increase the speed command first.")
-            return
-
-        if self.invert_direction_check.isChecked():
-            direction = "DOWN" if direction == "UP" else "UP"
-
-        if self.demo_mode:
-            self.demo_locked = False
-            self.demo_direction = 1 if direction == "UP" else -1
-        else:
-            self.send_command(f"MOTOR_{direction},{speed}")
-
-        self.motor_state = direction
-        self.motor_state_label.setText(f"Motor state: {direction}")
-
-    def finish_motor_motion(self) -> None:
-        if self.estop_active:
-            return
-
-        # Releasing UP/DOWN stops the motor immediately.
-        # Automatic position lock is intentionally disabled.
-        self.lock_delay_timer.stop()
-
-        if self.demo_mode:
-            self.demo_direction = 0
-            self.demo_locked = False
-        else:
-            self.send_command("MOTOR_BRAKE")
-
-        self.motor_state = "BRAKED"
-        self.motor_state_label.setText("Motor state: BRAKED")
-        self.status_message("UP/DOWN released: active electrical brake engaged")
-
-    def lock_current_position(self) -> None:
-        if self.estop_active:
-            return
-
-        tolerance = self.lock_tolerance_spin.value()
-        self.lock_tolerance_counts = tolerance
