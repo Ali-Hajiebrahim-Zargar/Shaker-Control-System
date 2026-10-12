@@ -79,6 +79,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -966,7 +967,8 @@ class ShakerWindow(QMainWindow):
         self.plot_origin_t0 = time.perf_counter()
 
         # ------------------------------------------------------------
-        # Build UI: DAQ and Motor are intentionally separated.
+        # Build UI: live DAQ and motor operation in one Dashboard.
+        # Device connection widgets live in a separate Settings tab.
         # ------------------------------------------------------------
         central = QWidget()
         self.setCentralWidget(central)
@@ -976,9 +978,9 @@ class ShakerWindow(QMainWindow):
         root.addWidget(self.tabs, 1)
 
         self.daq_tab = self.build_daq_tab()
-        self.motor_tab = self.build_motor_tab()
-        self.tabs.addTab(self.daq_tab, "DAQ - Force + Oscilloscope")
-        self.tabs.addTab(self.motor_tab, "Motor Control")
+        self.settings_tab = self.build_settings_tab()
+        self.tabs.addTab(self.daq_tab, "Dashboard - DAQ + Motor")
+        self.tabs.addTab(self.settings_tab, "Settings")
 
         # ------------------------------------------------------------
         # GUI-only timers. Hardware I/O remains inside its dedicated thread.
@@ -1003,34 +1005,73 @@ class ShakerWindow(QMainWindow):
     # UI
     # ==================================================================
     def build_daq_tab(self) -> QWidget:
+        """Live force/scope visualization, acquisition, and motor controls together."""
         tab = QWidget()
-        root = QVBoxLayout(tab)
+        outer = QVBoxLayout(tab)
 
-        root.addWidget(self.build_daq_connections_box())
+        navigation = QHBoxLayout()
+        info = QLabel(
+            "Live force + oscilloscope + position control | "
+            "Connect devices in Settings first"
+        )
+        info.setWordWrap(True)
+        navigation.addWidget(info, 1)
+        settings_button = QPushButton("OPEN CONNECTION SETTINGS")
+        settings_button.setToolTip(
+            "Choose and connect the force sensor, oscilloscope and Arduino Mega"
+        )
+        settings_button.clicked.connect(
+            lambda: self.tabs.setCurrentWidget(self.settings_tab)
+        )
+        navigation.addWidget(settings_button)
+        outer.addLayout(navigation)
+
+        # The controls plus two full-size plots are taller than many laptop
+        # screens. A native Qt scroll area prevents shrinking/clipping and
+        # keeps every motor and scope command accessible.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        dashboard = QWidget()
+        root = QVBoxLayout(dashboard)
+        root.setSpacing(10)
+
         root.addWidget(self.build_sampling_box())
+        root.addWidget(self.build_motor_box())
         root.addWidget(self.build_scope_controls_box())
 
         figures = QGridLayout()
-        figures.addWidget(self.build_force_box(), 0, 0)
-        figures.addWidget(self.build_scope_display_box(), 0, 1)
+        force_box = self.build_force_box()
+        scope_box = self.build_scope_display_box()
+        force_box.setMinimumHeight(390)
+        scope_box.setMinimumHeight(390)
+        figures.addWidget(force_box, 0, 0)
+        figures.addWidget(scope_box, 0, 1)
         figures.setColumnStretch(0, 1)
         figures.setColumnStretch(1, 1)
         root.addLayout(figures, 1)
+        scroll.setWidget(dashboard)
+        outer.addWidget(scroll, 1)
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status")
-        root.addWidget(self.status_label)
+        outer.addWidget(self.status_label)
         return tab
 
-    def build_motor_tab(self) -> QWidget:
+    def build_settings_tab(self) -> QWidget:
+        """All connections in Settings; no motor movement controls here."""
         tab = QWidget()
         root = QVBoxLayout(tab)
+
+        description = QLabel(
+            "Connect each device here. The DAQ and motor worker threads "
+            "continue running when you return to Dashboard."
+        )
+        description.setWordWrap(True)
+        root.addWidget(description)
+
+        root.addWidget(self.build_daq_connections_box())
         root.addWidget(self.build_motor_connection_box())
-        root.addWidget(self.build_motor_box())
         root.addStretch(1)
-        self.motor_tab_status_label = QLabel("Motor controls are isolated from force/scope acquisition.")
-        self.motor_tab_status_label.setObjectName("status")
-        root.addWidget(self.motor_tab_status_label)
         return tab
 
     def build_daq_connections_box(self) -> QGroupBox:
@@ -1913,7 +1954,7 @@ class ShakerWindow(QMainWindow):
 
     def require_scope(self) -> bool:
         if not self.scope_connected:
-            QMessageBox.warning(self, APP_TITLE, "Connect the MSO4104B in the DAQ tab first.")
+            QMessageBox.warning(self, APP_TITLE, "Connect the MSO4104B in the Settings tab first.")
             return False
         return True
 
