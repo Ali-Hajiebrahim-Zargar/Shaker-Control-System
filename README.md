@@ -23,8 +23,8 @@ The **TIRA S504 shaker** and **FAULHABER position motor** are different devices.
 
 ## Run the current application
 
-Open \`CSU15-45N-USB/\` and double-click \`START_GUI.bat\` on Windows. Install a VISA backend such as TekVISA or NI-VISA separately. Hardware wiring, oscilloscope control, live viewing, START/STOP RAM recording, and Save As to separate force/scope CSV files are documented in the [full guide](CSU15-45N-USB/README.md).
+Open `CSU15-45N-USB/` and double-click `START_GUI.bat` on Windows. Install a VISA backend such as TekVISA or NI-VISA separately. Hardware wiring, oscilloscope control, live viewing, START/STOP RAM recording, and Save As to separate force/scope CSV files are documented in the [full guide](CSU15-45N-USB/README.md).
 
 ## Legacy implementation
 
-The root \`Arduino/\` and \`GUI/\` files in this repository are retained from the earlier Arduino/I2C force-sensor configuration (CS8-10N). For the **CSU15-45N USB + MSO4104B** version use the files in \`CSU15-45N-USB/\`. The repository \`main\` branch remains unchanged.
+The root `Arduino/` and `GUI/` files in this repository are retained from the earlier Arduino/I2C force-sensor configuration (CS8-10N). For the **CSU15-45N USB + MSO4104B** version use the files in `CSU15-45N-USB/`. The repository `main` branch remains unchanged.
