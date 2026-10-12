@@ -123,8 +123,8 @@ Ordinary BRAKE is dynamic electrical braking; **POSITION BRAKE** is an optional 
 
 ### Force sensor and synchronization
 
-- The calibrated force sensor is **CSU15-45N** (USB); it is **not** the earlier **CS8-10N I2C** sensor used on the legacy branch.
-- The GUI currently converts digital counts to N as `(raw_counts - baseline_counts) * 45 / 512`; default baseline is 255 counts and TARE sets a new software zero from recent unloaded readings. Verify physical calibration experimentally.
+- **Current sensor: SingleTact CSU15-45N, calibrated USB force sensor, 45 N nominal full scale.** All force readings and CSV force values in this branch use the 45 N sensor configuration; the older 10 N sensor is not used in this setup.
+- For the **45 N CSU15-45N** sensor, the GUI currently converts digital counts to N as `(raw_counts - baseline_counts) * 45 / 512` (not a 10 N conversion); default baseline is 255 counts and TARE sets a new software zero from recent unloaded readings. Verify physical calibration experimentally.
 - Force, scope and motor are independent communication tasks; START/STOP define a common **software recording interval**, not a simultaneous hardware trigger.
 - Continuous live viewing runs even when RAM recording is stopped. **START SAMPLING** clears both plots and begins a RAM recording; **STOP SAMPLING** resets plots for ongoing live display while keeping the completed recording in RAM until **SAVE AS**.
 - SAVE AS creates two files in the selected session directory: `force_sensor.csv` and `oscilloscope.csv`. They are intentionally **separate** and have different column schemas.
