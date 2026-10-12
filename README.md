@@ -27,4 +27,4 @@ Open `CSU15-45N-USB/` and double-click `START_GUI.bat` on Windows. Install a VIS
 
 ## Legacy implementation
 
-The root `Arduino/` and `GUI/` files in this repository are retained from the earlier Arduino/I2C force-sensor configuration (CS8-10N). For the **CSU15-45N USB + MSO4104B** version use the files in `CSU15-45N-USB/`. The repository `main` branch remains unchanged.
+The active calibrated force sensor in this branch is **SingleTact CSU15-45N (45 N full scale, USB)**, not a 10 N sensor. The root `Arduino/` and `GUI/` files are retained from an earlier Arduino/I2C configuration; for the current **45 N USB force sensor + MSO4104B** setup, use the files in `CSU15-45N-USB/`. The repository `main` branch remains unchanged.
