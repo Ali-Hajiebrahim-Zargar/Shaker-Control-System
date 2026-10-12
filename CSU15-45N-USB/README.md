@@ -1,425 +1,290 @@
-# Shaker Control System - CSU15-45N USB branch
+# Shaker Control System — TIRA S504, CSU15-45N and MSO4104B
 
-This branch is a dedicated version of the shaker-control project for the **SingleTact CSU15-45N calibrated USB force sensor**. It keeps the **Arduino Mega only for motor and encoder control**. Force data are read **directly by the Python GUI from the SingleTact USB electronics**.
+**Branch:** \`csu15-45n-usb\` — independent from the legacy \`main\` implementation.
 
-## Branch
+This project is a Windows/Python GUI for a laboratory **electrodynamic shaker test bench**, combining continuously refreshed force measurements, a Tektronix oscilloscope screen view, acquisition to RAM followed by Save As into separate CSV files, and independent motorized position adjustment via Arduino Mega.
 
-`csu15-45n-usb`
+## Hardware inventory
 
-The files for this version are intentionally stored in a separate folder and use different names so they do not overwrite the original CS8-10N / Arduino-force implementation.
+| Equipment / function | Hardware actually used | Role in the experimental setup |
+|---|---|---|
+| Electrodynamic shaker | **TIRA GmbH S504** | Produces mechanical vibration of the test fixture/sample. |
+| Shaker power amplifier | **TIRA BAA 60** | Drives the TIRA S504 with the amplified excitation signal. |
+| Signal source | **Function generator** (make/model not specified) | Generates the **sinusoidal waveform** supplied to the shaker power amplifier; sets the excitation waveform/frequency at the instrument. |
+| ICP signal conditioner | **482A21** | Conditions the signal from an ICP-compatible transducer (transducer model is not specified) before measurement. |
+| Oscilloscope | **Tektronix MSO4104B** | Observes the electrical measurement signals; connects to the PC through its rear **USB Device (USBTMC)** port for PyVISA/SCPI commands, screen PNG images and waveform acquisition. |
+| Calibrated force sensor | **SingleTact CSU15-45N**, calibrated **USB** sensor, **45 N** nominal range | Measures the force at the mechanical setup; its SingleTact USB electronics connect **directly to the PC** through a separate COM port. |
+| Microcontroller | **Arduino Mega** | Controls the auxiliary motor and reads its encoder. It does **not** acquire CSU15-45N force data in this version. |
+| Position-control motor | **FAULHABER 2232 024S** DC motor | Adjusts/holds mechanical position separately from the TIRA vibration shaker. |
+| Motor encoder | **FAULHABER IE2-512** | Position feedback for the FAULHABER motor, including the on-demand POSITION BRAKE function. |
+| Motor driver | **L298N H-bridge** (Soldered 555048) | Drives the FAULHABER motor under Arduino commands. |
+| DC power supply | **Up to 24 V DC** for the motor-driver/motor section | Supplies the **position-control motor** through the L298N; **not** a claim that the TIRA BAA 60 shaker amplifier uses this DC supply. |
+| Host computer | **Windows laptop/PC** | Runs the GUI, receives force data, connects to the oscilloscope by USB/VISA and optionally communicates with Arduino via a separate USB COM port. |
 
-## Files
+The user has not provided the model of the function generator or the ICP transducer itself, so neither is assumed here.
 
-```text
+## Experimental signal and control paths
+
+\`\`\`text
+                       VIBRATION / EXCITATION PATH
+
+  Function generator (sinusoidal output)
+                |
+                v
+  TIRA BAA 60 power amplifier
+                |
+                v
+  TIRA GmbH S504 electrodynamic shaker
+                |
+                v
+     Mechanical fixture / device under test
+                |
+            Force applied
+                |
+                v
+  SingleTact CSU15-45N calibrated USB sensor
+                |
+       SingleTact USB electronics
+                |
+             PC (COM)
+                |
+                v
+          Force plot / CSV
+
+
+                 ICP MEASUREMENT PATH (when fitted)
+
+   ICP-compatible transducer (model not specified)
+                |
+                v
+      ICP signal conditioner 482A21
+                |
+      Conditioned analog signal
+                |
+                v
+        Tektronix MSO4104B
+                |
+       Rear USB Device / USBTMC
+                |
+                v
+      PC: PyVISA / scope screen / scope CSV
+
+
+                MOTOR POSITION CONTROL PATH
+
+              Windows GUI
+                  |
+            Arduino Mega (USB)
+                  |
+        L298N motor driver <--- DC supply (up to 24 V)
+                  |
+          FAULHABER 2232 024S
+                  |
+         FAULHABER IE2-512 encoder
+                  |
+       Mega D18 (A), D19 (B)
+\`\`\`
+
+These are **distinct subsystems**: the TIRA S504 is the shaker that generates the sinusoidal mechanical vibration, while the FAULHABER motor is an auxiliary **position-control motor**. Do not confuse the two.
+
+### Oscilloscope and ICP conditioner
+
+- If an ICP output is being measured, connect the ICP sensor to **482A21** and the **conditioned analog output** to a suitable MSO4104B input; use appropriate channel/probe settings.
+- Do **not** connect the high-power output of the TIRA BAA 60 directly to a normal oscilloscope input. Use an appropriately rated measurement method/probe when such a measurement is needed.
+- The PC-to-scope USB cable goes into the MSO4104B **rear USB Device port**, not a USB Host port.
+- Install **TekVISA or NI-VISA** on Windows and Python **PyVISA** for remote acquisition and control.
+- The on-screen display is a sequence of original Tektronix PNG **screenshots**, not a zero-latency video stream. A nominal **50 ms request interval** is offered, but actual frame rate is limited by USB/VISA transfer and instrument processing.
+
+### Arduino Mega, L298N and FAULHABER wiring
+
+\`\`\`text
+Arduino Mega D6  -> L298N ENA (remove ENA jumper)
+Arduino Mega D7  -> L298N IN1
+Arduino Mega D8  -> L298N IN2
+Arduino Mega GND -> L298N GND (common ground)
+
+L298N OUT1/OUT2  -> FAULHABER 2232 024S motor
+Motor DC supply  -> L298N power input (up to 24 V DC for this setup)
+
+IE2-512 encoder A   -> Mega D18
+IE2-512 encoder B   -> Mega D19
+IE2-512 encoder +5V -> Mega +5V
+IE2-512 encoder GND -> Mega GND
+\`\`\`
+
+**Important:** in the verified L298N configuration powered from the motor supply, **do not connect Arduino 5 V to the L298N 5 V pin**. Common GND is required. The firmware caps motor drive commands at 5%. Verified movement/encoder count mapping:
+
+\`\`\`text
+UP   -> encoder count decreases
+DOWN -> encoder count increases
+\`\`\`
+
+Ordinary BRAKE is dynamic electrical braking; **POSITION BRAKE** is an optional encoder-feedback hold (limited motor PWM), and **E-STOP** disables the H-bridge outputs without physically disconnecting the external DC supply.
+
+### Force sensor and synchronization
+
+- The calibrated force sensor is **CSU15-45N** (USB); it is **not** the earlier **CS8-10N I2C** sensor used on the legacy branch.
+- The GUI currently converts digital counts to N as \`(raw_counts - baseline_counts) * 45 / 512\`; default baseline is 255 counts and TARE sets a new software zero from recent unloaded readings. Verify physical calibration experimentally.
+- Force, scope and motor are independent communication tasks; START/STOP define a common **software recording interval**, not a simultaneous hardware trigger.
+- Continuous live viewing runs even when RAM recording is stopped. **START SAMPLING** clears both plots and begins a RAM recording; **STOP SAMPLING** resets plots for ongoing live display while keeping the completed recording in RAM until **SAVE AS**.
+- SAVE AS creates two files in the selected session directory: \`force_sensor.csv\` and \`oscilloscope.csv\`. They are intentionally **separate** and have different column schemas.
+- A dedicated motor thread, force thread, scope thread and CSV writer task prevent blocking USB transfers from monopolizing the GUI. Unexported RAM data may still be lost if the application terminates unexpectedly.
+
+## Project files
+
+\`\`\`text
 CSU15-45N-USB/
 ├── Arduino/
 │   └── shaker_controller_CSU15_45N.ino
 ├── GUI/
 │   └── shaker_control_gui_CSU15_45N.py
+├── START_GUI.bat
 ├── requirements.txt
 └── README.md
+\`\`\`
+
+Extract the project and double-click **START_GUI.bat** on Windows. It uses the Python 3.12 environment configured in the launcher. Install a VISA backend separately. The legacy root-level \`GUI/shaker_control_gui.py\` in this repository belongs to an earlier sensor configuration and is **not** the current CSU15-45N application.
+
+## Existing release notes and operating details
+
+### Latest changes: extended timebase and fastest screen refresh
+
+- **Time/div** now includes 10, 15, 20, 30, 40, 45 and 50 seconds/div, followed
+  by 1, 1.5, 2, 2.5, 3, 3.5 and **4 minutes/div**. The GUI sends the chosen
+  seconds/div value via `HORIZONTAL:MAIN:SCALE` and reads the settings back.
+- **AUTO REFRESH SCOPE SCREEN** is enabled by default at the minimum selectable
+  **50 ms** refresh-request interval (maximum 5000 ms). This is the fastest
+  offered *request interval*, **not a guaranteed 50 ms per screenshot**.
+  The actual image refresh rate is limited by the MSO4104B hardcopy rendering,
+  USB/VISA transfer, and concurrent waveform transfer for CSV recording.
+- The oscilloscope worker continues to handle all scope commands off the GUI
+  thread and **coalesces duplicate screen requests**, so using 50 ms cannot
+  produce an unlimited backlog or freeze the force/motor workers.
+- **MSO4104B limitation:** the available maximum seconds/div can depend on
+  record length. Tektronix lists up to 400 s/div for 10 kpoint records and up
+  to 1000 s/div with longer records, but only up to 40 s/div for a 1 kpoint
+  record. If the scope rejects or adjusts a long timebase, read back the
+  instrument settings or adjust record length on the instrument.
+
+### Force zoom and Tektronix LCD image
+
+This standalone Windows version combines:
+
+- SingleTact **CSU15-45N** calibrated USB force sensor
+- Tektronix **MSO4104B** through the rear USB Device/USBTMC port and PyVISA
+- Arduino Mega + FAULHABER 2232 024S motor / IE2-512 encoder / L298N
+
+It retains the earlier **continuous live monitoring**, START/STOP **RAM recording**, explicit **SAVE AS**, four worker threads, and separate motor controls. This revision removes the reconstructed waveform plot from the display and stabilizes zoom.
+
+## Run
+
+1. Extract the ZIP, keeping the directory structure intact.
+2. Install a Windows VISA driver: TekVISA or NI-VISA. The USB cable must go to **USB Device** on the rear of MSO4104B, not a USB Host port.
+3. Close the SingleTact manufacturer's app before connecting the CSU15-45N in this GUI.
+4. **Double-click `START_GUI.bat`**. It launches the application using the user's Python 3.12 installation, installing missing Python requirements if necessary.
+5. In **DAQ - Force + Oscilloscope**, select the force COM port and oscilloscope VISA resource; connect both. Use the separate **Motor Control** tab if the motor/encoder connection is required.
+
+Requirements are listed in `requirements.txt`: `PySide6`, `pyqtgraph`, `PyVISA`, `pyserial`. A VISA backend is a separate system installation.
+
+## Main UI
+
+### DAQ - Force + Oscilloscope
+
+**Force figure**
+
+- The live sensor force curve and current force value appear independently of START/STOP, as long as the force USB device is connected.
+- Use mouse wheel to **zoom**, mouse drag to **pan**. The view stops automatic horizontal scrolling when the user manually zooms or pans.
+- Click **FOLLOW LIVE** to resume scrolling with new data. START or STOP also intentionally resets the figure and reenables Follow Live.
+- Force USB polling is approximately 100 Hz; the **plot is redrawn at 10 Hz**, and peak-preserving downsampling is applied **only to pixels**, not to the RAM recording or exported values.
+- Tare averages recent raw unloaded readings. Current force conversion: `(raw - baseline) * 45 / 512 N`, baseline initially `255` raw counts.
+
+**Oscilloscope figure**
+
+- There is **one single view of the exact scope-screen image**; the old *Waveform data* visualization tab has been removed.
+- Scope sends the original **PNG screenshot** via `SAVE:IMAGE:FILEFORMAT PNG`, `HARDCOPY:INKSAVER OFF`, `HARDCOPY:LAYOUT LANDSCAPE`, and `HARDCOPY START`. The PC displays the received pixels rather than reconstructing a trace.
+- **AUTO REFRESH SCOPE SCREEN** is on by default when a scope connection opens. Set its refresh interval as desired (default 1000 ms) or use **REFRESH SCREEN** for a manual snapshot.
+- Scroll wheel **zooms** the screenshot, dragging **pans** it; **FIT SCREEN** restores whole-image view. New image frames update the same image item without resetting zoom/pan.
+- The panel displays source PNG resolution and the local time it was received.
+- A PNG is a snapshot from the instrument, **not a zero-latency video feed**. With time-varying/non-repeatable signals, the trace can differ from what the physical LCD displays at a *later* instant. To compare, freeze the physical scope with its own STOP button and request a fresh screenshot.
+- Background `CURVE?` captures continue for numerical measurements and optional CSV recording; these are **not displayed as a second synthetic waveform plot**.
+- Ordinary background waveform reads no longer issue `SELECT:CHx ON` and therefore no longer silently change which channels are enabled on the scope screen. Explicit APPLY VERTICAL can still enable the selected channel as intended.
+
+**Scope controls**
+
+- Channel, coupling, V/div, vertical position, timebase, trigger source/slope/level, APPLY, RUN, STOP, SINGLE, RESET SCOPE, AUTOSET, READ SETTINGS, REFRESH SCREEN.
+- Scope settings and screenshot/waveform access occur **only inside the dedicated ScopeWorker thread**. Numeric waveform requests and images share the physical VISA session and are serialized.
+
+### Motor Control
+
+- Separate tab for Arduino Mega COM port, UP/DOWN, BRAKE, POSITION BRAKE, encoder counts, E-STOP/RESET.
+- Arduino logic and pin configuration are the same as in the previous release; firmware hard-caps motor commands to 5% PWM.
+
+## Sampling / RAM / SAVE AS
+
+| Action | Live force figure | Live scope PNG view | In-memory recording |
+|---|---|---|---|
+| Connect devices | Runs | Runs | Not recording |
+| START SAMPLING | Clears, restarts live | Clears, requests fresh PNG | Begins force + scope waveform storage |
+| During sampling | Runs | Runs | Adds samples in RAM |
+| STOP SAMPLING | Clears, restarts live | Clears, requests fresh PNG | Stops but retains completed capture |
+| SAVE AS... | Continues live | Continues live | Writes recorded data to disk in background |
+
+- A previously **unsaved** recording blocks a new START so it cannot be overwritten by accident.
+- A disk write error retains the RAM recording so Save As can be retried.
+- Recorded RAM data can be lost if Windows/the app crashes; save completed sessions.
+- Force and oscilloscope have a common PC-monotonic start timestamp; they are **not hardware-trigger synchronized**. USB and scope latency remain.
+
+**CSV output**: After choosing a destination, a separate unique `session_YYYYMMDD_HHMMSS` directory contains:
+
+```
+force_sensor.csv
+oscilloscope.csv
 ```
 
-## System architecture
+`force_sensor.csv` headers:
 
-```text
-                         Windows PC
-                            │
-                Python / PySide6 GUI
-                   │                  │
-                   │                  │
-          USB / COM port A     USB / COM port B
-                   │                  │
-        SingleTact CSU15-45N      Arduino Mega
-          USB electronics              │
-                   │                    ├── L298N H-bridge
-                   └── Force data       ├── FAULHABER motor
-                                        └── IE2-512 encoder
+```
+Time (s),Raw Counts,Force (N),Motor Position (counts),Motor State
 ```
 
-The Arduino is **not used for force acquisition** in this branch.
+`oscilloscope.csv` headers:
 
-## Hardware
-
-### Motor and encoder
-
-- Arduino Mega
-- FAULHABER 2232 024S DC motor
-- FAULHABER IE2-512 encoder
-- L298N H-bridge
-- External 24 V motor supply
-
-### Force sensor
-
-- SingleTact CSU15-45N calibrated USB sensor
-- Nominal force range: 45 N
-- Connected directly to the PC through the SingleTact USB electronics
-
-## Wiring
-
-### L298N to Arduino Mega
-
-```text
-Mega D6  -> L298N ENA
-Mega D7  -> L298N IN1
-Mega D8  -> L298N IN2
-Mega GND -> L298N GND
+```
+Capture Time (s),Channel,Sample Index,Waveform Time (s),Voltage (V)
 ```
 
-Motor leads go to L298N OUT1 and OUT2.
+Each oscilloscope capture supplies one row per voltage sample. `Capture Time` is the PC-relative waveform retrieval start, while `Waveform Time` is the oscilloscope's time-axis offset/increment. Waveform transfers are capped at 10,000 points per capture to keep USB transfers manageable. These CSVs are application exports, not byte-identical copies of manufacturer-created files.
 
-The 24 V supply is connected to the L298N motor-supply input.
+## Worker design
 
-**Important:** with the present L298N module configuration, do not connect Arduino 5 V to the L298N 5 V pin. Arduino GND and L298N GND must remain common.
-
-### Encoder to Arduino Mega
-
-```text
-Encoder A   -> Mega D18
-Encoder B   -> Mega D19
-Encoder +5V -> Mega 5V
-Encoder GND -> Mega GND
+```
+Qt main thread       UI events, fast plot rendering, RAM capture buffers
+MotorWorker          Arduino serial + motor commands + encoder telemetry
+ForceWorker          SingleTact USB/COM polling + force timestamps
+ScopeWorker          USBTMC/PyVISA + SCPI + PNG + numeric waveform
+CSVWriterWorker      Writes the completed RAM capture after SAVE AS
 ```
 
-Verified direction mapping for this physical system:
-
-```text
-UP   -> encoder count decreases
-DOWN -> encoder count increases
-```
-
-The POSITION BRAKE algorithm is written for this mapping.
-
-### CSU15-45N
-
-The CSU15-45N is connected only by USB to the Windows PC.
-
-There is no I2C wiring from this sensor to the Arduino in this branch.
-
-## Software requirements
-
-Python dependencies:
-
-```text
-PySide6>=6.7
-pyqtgraph>=0.13
-```
-
-Install them with:
-
-```bash
-python -m pip install -r CSU15-45N-USB/requirements.txt
-```
-
-Run the GUI with:
-
-```bash
-python CSU15-45N-USB/GUI/shaker_control_gui_CSU15_45N.py
-```
-
-Upload the Arduino sketch:
-
-```text
-CSU15-45N-USB/Arduino/shaker_controller_CSU15_45N.ino
-```
-
-to the Arduino Mega.
-
-## Two independent COM ports
-
-The GUI uses two serial ports at the same time:
-
-1. **Motor controller COM port**: Arduino Mega.
-2. **Force sensor COM port**: SingleTact CSU15-45N USB electronics.
-
-Both use 115200 baud.
-
-Do not select the same COM port for both devices.
-
-The official SingleTact application must be closed before this GUI connects to the force-sensor COM port because Windows normally allows only one application to own a serial port at a time.
-
-## SingleTact USB initialization
-
-The GUI reproduces the important initialization sequence used by the official SingleTact NETInterface driver:
-
-1. Open the force-sensor COM port at 115200 baud.
-2. Clear receive/transmit buffers.
-3. Set DTR HIGH.
-4. Wait approximately 10 ms.
-5. Set DTR LOW.
-6. Wait approximately 2 s for the USB electronics to restart.
-7. Set RTS HIGH.
-8. Clear the buffers again.
-9. Begin binary command/response polling.
-
-This initialization was added because simply opening the COM port and polling immediately did not reliably produce data even though the official SingleTact application worked.
-
-## SingleTact binary protocol used by the GUI
-
-The GUI follows the protocol structure used by SingleTact's official NETInterface implementation.
-
-Main parameters:
-
-```text
-Baud rate:        115200
-I2C address:      0x04
-Read command:     0x01
-Read location:    128
-Read length:      6 bytes
-Polling interval: 10 ms target
-Reply timeout:    150 ms
-```
-
-The outgoing command uses the official serial command structure. The parser accepts the SingleTact USB response header as well as the interface-style header used by the official software.
-
-The six sensor bytes contain an iteration counter and the force-sensor output. Duplicate frames with the same iteration counter are ignored.
-
-## Force conversion
-
-The GUI currently uses:
-
-```text
-Force [N] = (RawCounts - BaselineCounts) * 45 / 512
-```
-
-Constants:
-
-```text
-Sensor rating = 45 N
-Full-scale digital span = 512 counts
-Default baseline = 255 counts
-```
-
-The live GUI shows both:
-
-- raw sensor counts
-- converted force in N
-
-## Force tare
-
-`TARE FORCE` is a software tare in the GUI.
-
-The sensor should be completely unloaded before pressing the button.
-
-The GUI:
-
-1. keeps recent valid raw USB samples,
-2. requires at least 10 recent samples,
-3. uses up to the most recent 20 samples,
-4. averages them,
-5. stores that mean as the new baseline.
-
-After tare, the live graph is cleared and restarted because old graph points were calculated with the previous baseline.
-
-`RESET FACTORY ZERO` restores the software baseline to 255 counts and also restarts the live graph.
-
-## Live force graph
-
-The graph is intentionally independent of CSV recording.
-
-As soon as the force sensor is connected and valid frames are received:
-
-- `Live force` updates continuously,
-- the plot updates continuously,
-- both use exactly the same converted `force_n` value.
-
-Therefore the numeric live value and the last plotted point should represent the same sample stream.
-
-`START ACQUISITION` does **not** start the graph. It only starts recording to CSV.
-
-`STOP ACQUISITION` stops CSV recording but the live graph continues.
-
-## CSV recording
-
-When CSV saving is enabled and `START ACQUISITION` is pressed, the GUI records:
-
-```text
-time_s
-force_raw_counts
-force_N
-motor_position_counts
-motor_state
-```
-
-The recording time starts from zero for each acquisition.
-
-The force plot has its own continuous live-time axis and does not reset when CSV recording starts.
-
-## Motor control
-
-### Speed
-
-Both the GUI and the Arduino firmware limit motor commands to a maximum of 5%.
-
-The Arduino independently enforces the limit, so a larger GUI or serial command cannot exceed the firmware cap.
-
-### UP / DOWN
-
-`UP` and `DOWN` are press-and-hold controls.
-
-While the button is pressed, the motor is driven in the requested direction.
-
-When the button is released, the GUI sends `MOTOR_BRAKE`.
-
-Manual UP or DOWN motion cancels POSITION BRAKE.
-
-## Normal BRAKE
-
-Normal BRAKE is **dynamic electrical braking**, not active position control.
-
-The firmware sets both direction inputs LOW and enables the bridge so the motor terminals are electrically shorted through the H-bridge.
-
-This produces resistance that depends on motor-generated back-EMF. It is not equivalent to a mechanical holding brake, and its holding torque becomes weak near zero speed.
-
-## POSITION BRAKE
-
-POSITION BRAKE is the active encoder-based hold mode.
-
-When enabled:
-
-1. Arduino captures the current encoder count as the target.
-2. Arduino continuously reads the encoder.
-3. If the actual count moves outside the allowed tolerance, the motor is driven back toward the target.
-4. Once the count returns inside the tolerance band, dynamic electrical braking is applied.
-
-Because the verified direction mapping is:
-
-```text
-UP   -> count decreases
-DOWN -> count increases
-```
-
-the correction logic is:
-
-```text
-current < target -> drive DOWN
-current > target -> drive UP
-inside tolerance -> dynamic brake
-```
-
-The correction command is also limited to approximately 5% PWM.
-
-The default tolerance in the GUI is 2 encoder counts and can be changed.
-
-## Emergency stop
-
-`EMERGENCY STOP` behaves differently from normal BRAKE.
-
-For E-STOP the Arduino disables the H-bridge ENA output and places the motor in a coast/output-disabled state.
-
-Motor commands are rejected while E-STOP is active.
-
-Use `RESET E-STOP` before moving the motor again. Reset returns the system to normal BRAKED state.
-
-## Arduino serial protocol
-
-The motor controller sends telemetry at approximately 50 Hz:
-
-```text
-MOTOR_DATA,<millis>,<encoder_count>,<motor_state>
-```
-
-Motor states include:
-
-```text
-BRAKED
-UP
-DOWN
-POSITION_HOLD
-ESTOP
-```
-
-Supported GUI-to-Arduino commands:
-
-```text
-MOTOR_UP,<percent>
-MOTOR_DOWN,<percent>
-MOTOR_BRAKE
-MOTOR_STOP
-MOTOR_POSITION_BRAKE,<tolerance_counts>
-MOTOR_POSITION_RELEASE
-SET_LOCK_TOL,<tolerance_counts>
-ESTOP
-RESET_ESTOP
-GET_STATUS
-```
-
-Firmware responses use `STATUS,...` and `ERROR,...` messages.
-
-## Startup behavior
-
-On Arduino startup:
-
-- motor pins are configured,
-- encoder interrupt is attached,
-- normal electrical BRAKE is engaged,
-- the initial mode is `BRAKED`,
-- motor/encoder telemetry begins automatically.
-
-Force acquisition is completely independent of Arduino startup.
-
-## Troubleshooting
-
-### Official SingleTact app works but this GUI receives no force data
-
-- Close the official SingleTact application completely.
-- Refresh COM ports.
-- Select the correct SingleTact COM port.
-- Connect again and allow the approximately 2 s USB initialization delay.
-- Confirm that the GUI status changes from waiting for data to receiving data.
-- Make sure the Arduino COM port was not accidentally selected as the force COM port.
-
-### GUI connects to force sensor but Live force does not move
-
-Check the raw-count label first.
-
-- If raw counts change but N does not look correct, investigate the baseline/scaling.
-- If raw counts do not change, confirm the correct COM port and that the official SingleTact application is closed.
-- Use `TARE FORCE` only while completely unloaded.
-
-### Live number and graph disagree
-
-They should not disagree in this version. Both are generated from the same `force_n` sample.
-
-If a different zero was applied with TARE or RESET, the graph is automatically cleared so values calculated using different baselines are not mixed.
-
-### Motor moves correctly but POSITION BRAKE pushes in the wrong direction
-
-This firmware assumes the verified mapping:
-
-```text
-UP   -> encoder count decreases
-DOWN -> encoder count increases
-```
-
-If motor or encoder wiring changes in the future, that mapping must be checked again before using POSITION BRAKE.
-
-### Motor can still be turned by hand in ordinary BRAKE mode
-
-That is expected for dynamic electrical braking. It is strongest when the motor is moving and produces back-EMF. Use POSITION BRAKE when active encoder-based position restoration is required.
-
-## Current scope
-
-This branch currently implements:
-
-- CSU15-45N direct USB force acquisition
-- live force display
-- live force plot
-- software tare
-- CSV recording
-- Arduino motor control
-- encoder telemetry
-- dynamic brake
-- encoder-based POSITION BRAKE
-- E-STOP / reset
-
-The piezoelectric acquisition channel is not integrated in this CSU15-45N branch.
-
-## Safety notes
-
-- The motor is powered from an external 24 V supply.
-- Keep Arduino and L298N grounds common.
-- Do not connect Arduino 5 V to the L298N 5 V pin in the verified module configuration.
-- Firmware motor drive is intentionally capped at 5%.
-- POSITION BRAKE actively drives the motor when external force moves the shaft away from the target; keep hands and mechanical parts clear of pinch points.
-- E-STOP disables drive output but does not physically disconnect the 24 V supply.
+The 10 Hz force plot timer does not define sensor sampling frequency. Image transfer may be slower than the configured screen refresh timer; redundant screen requests are coalesced rather than queued indefinitely.
+
+## Hardware safety
+
+- Arduino Mega: `D6 → L298N ENA`, `D7 → IN1`, `D8 → IN2`.
+- Encoder: `A → D18`, `B → D19`, powered from Arduino 5 V/GND.
+- The motor supply is external 24 V; Arduino and L298N GND must be common.
+- In the verified module configuration, **do not connect Arduino 5 V to L298N 5 V**.
+- On this hardware, UP decreases encoder counts and DOWN increases them; POSITION BRAKE relies on that mapping.
+- Normal BRAKE is electrical *dynamic* braking, not fixed-position holding. POSITION BRAKE actively restores encoder position on demand.
+- E-STOP disables motor drive; it does not disconnect the 24 V supply.
+- This version does not yet implement the piezoelectric input channel.
+
+## Troubleshooting and limitations
+
+- **Force COM occupied**: close the official SingleTact program before starting this GUI.
+- **No scope in VISA list**: check the rear USB Device port and TekVISA/NI-VISA drivers.
+- **Zoom freezes/changes the X range**: run this revised GUI rather than the old waveform-plot version; use FOLLOW LIVE to resume scrolling after a manual zoom.
+- **Scope screenshot visually differs from a live LCD**: use the scope's own STOP to freeze the displayed acquisition, then request REFRESH SCREEN. The two displays cannot be guaranteed to show the same instant while RUN is active. Check the connected instrument identity and image dimensions.
+- **Scope PNG not updating**: check AUTO REFRESH SCOPE SCREEN and the scope connection/status messages. Large PNGs, other SCPI transfers and USB latency can slow refresh.
+- **GUI exception**: inspect `GUI/shaker_gui_error.log`.
+
+**Verification:** Static Python syntax and source-level regression checks have been performed. The USB/VISA interaction and zoom smoothness must be verified on your actual Windows + MSO4104B setup; no physical scope was available to test here.

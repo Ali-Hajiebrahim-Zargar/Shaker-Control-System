@@ -1,109 +1,30 @@
 # Shaker Control System
 
-Arduino Mega + Python GUI control and data-acquisition system for the laboratory shaker setup.
+Windows / Python + Arduino laboratory shaker control and data acquisition.
 
-## Current hardware
+**Current USB DAQ version (this branch):** [CSU15-45N-USB — full hardware, software and usage guide](CSU15-45N-USB/README.md)
 
-- Arduino Mega
-- FAULHABER 2232 024S motor
-- FAULHABER IE2-512 encoder
-- L298N H-bridge motor driver
-- SingleTact CS8-10N calibrated force sensor with its matched electronics board
-- External 24 V motor supply
+## Hardware in this setup
 
-## Current behavior
+| Device | Model / purpose |
+|---|---|
+| Shaker | **TIRA GmbH S504** — mechanical vibration |
+| Shaker amplifier | **TIRA BAA 60** — drives the shaker |
+| Function generator | Creates the **sinusoidal excitation waveform** fed to the TIRA amplifier; model not specified |
+| ICP conditioner | **482A21** — ICP sensor signal conditioning |
+| Oscilloscope | **Tektronix MSO4104B** — USB/VISA remote screen and waveform acquisition |
+| Calibrated force sensor | **SingleTact CSU15-45N (45 N, USB)** — direct to PC |
+| Controller | **Arduino Mega** — position control of auxiliary motor |
+| Auxiliary position motor | **FAULHABER 2232 024S** with **IE2-512 encoder** |
+| Position motor driver | **L298N H-bridge** |
+| DC power source | **Up to 24 V**, for the L298N/FAULHABER motor section |
 
-- Motor UP/DOWN control from the GUI
-- Motion commands limited to a maximum of 5% in both GUI and Arduino firmware
-- Releasing UP/DOWN engages active electrical braking
-- L298N remains powered from the 24 V supply during normal braking
-- ESTOP disables ENA and uses coast behavior
-- Encoder position feedback
-- Manual position lock
-- SingleTact I2C address 0x04
-- Real-time force plot in Newtons
-- Manual force tare
-- No automatic force tare at Arduino startup or acquisition START
-- Piezo channel is reserved but not integrated yet
+The **TIRA S504 shaker** and **FAULHABER position motor** are different devices. The 24 V DC supply description refers to the position-control motor, not the TIRA BAA 60 amplifier.
 
-## Wiring
+## Run the current application
 
-### L298N to Arduino Mega
+Open \`CSU15-45N-USB/\` and double-click \`START_GUI.bat\` on Windows. Install a VISA backend such as TekVISA or NI-VISA separately. Hardware wiring, oscilloscope control, live viewing, START/STOP RAM recording, and Save As to separate force/scope CSV files are documented in the [full guide](CSU15-45N-USB/README.md).
 
-```text
-Mega D6  -> L298N ENA
-Mega D7  -> L298N IN1
-Mega D8  -> L298N IN2
-Mega GND -> L298N GND
-```
+## Legacy implementation
 
-Motor -> L298N OUT1/OUT2.
-
-The L298N motor supply remains connected to 24 V.
-
-Important: do not connect Arduino 5V to the L298N 5V pin in the current module configuration. Grounds must remain common.
-
-### Encoder
-
-```text
-Encoder A   -> Mega D18
-Encoder B   -> Mega D19
-Encoder +5V -> Mega 5V
-Encoder GND -> Mega GND
-```
-
-### SingleTact CS8-10N
-
-```text
-SingleTact Pin 1 -> Mega 5V
-SingleTact Pin 8 -> Mega GND
-SingleTact Pin 3 -> Mega D21 / SCL
-SingleTact Pin 6 -> Mega D20 / SDA
-```
-
-Default I2C address: `0x04`.
-
-## Force conversion
-
-The firmware follows the SingleTact data format by reading register 128 and using the fixed digital offset `0xFF = 255`.
-
-For the CS8-10N:
-
-```text
-force_N = (raw - 255 - manual_tare_offset) * 10 / 512
-```
-
-The calibrated factory baseline is preserved by default. Manual TARE should only be pressed when the sensor is completely unloaded.
-
-A 100 g mass produces approximately 0.981 N under standard gravity.
-
-## Repository layout
-
-```text
-Arduino/shaker_controller.ino
-GUI/shaker_control_gui.py
-requirements.txt
-README.md
-```
-
-## Python dependencies
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-## Run GUI
-
-```bash
-python GUI/shaker_control_gui.py
-```
-
-Serial baud rate: `115200`.
-
-## Telemetry
-
-```text
-DATA,time_s,piezo_v,force_n,position_counts,motor_state
-```
-
-Combined GUI telemetry is currently limited to 100 Hz for the force-sensor integration.
+The root \`Arduino/\` and \`GUI/\` files in this repository are retained from the earlier Arduino/I2C force-sensor configuration (CS8-10N). For the **CSU15-45N USB + MSO4104B** version use the files in \`CSU15-45N-USB/\`. The repository \`main\` branch remains unchanged.
