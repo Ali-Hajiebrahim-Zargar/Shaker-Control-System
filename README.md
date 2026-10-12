@@ -4,6 +4,14 @@ Windows / Python + Arduino laboratory shaker control and data acquisition.
 
 **Current USB DAQ version (this branch):** [CSU15-45N-USB — full hardware, software and usage guide](CSU15-45N-USB/README.md)
 
+## GUI tabs
+
+**Dashboard - DAQ + Motor:** continuous force and exact oscilloscope screen, START/STOP and SAVE AS, scope controls, plus FAULHABER motor positioning controls (UP/DOWN, BRAKE, POSITION BRAKE, E-STOP).
+
+**Settings:** two connection sections — **DAQ connections** (CSU15-45N force sensor COM and Tektronix MSO4104B VISA) and **Motor controller connection** (Arduino Mega COM).
+
+Open **Settings** to connect hardware, then return to **Dashboard** for normal operation. Connections and worker threads remain active across tabs.
+
 ## Hardware in this setup
 
 | Device | Model / purpose |
