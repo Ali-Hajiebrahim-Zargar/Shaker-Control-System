@@ -1,6 +1,6 @@
 # Shaker Control System — TIRA S504, CSU15-45N and MSO4104B
 
-**Branch:** \`csu15-45n-usb\` — independent from the legacy \`main\` implementation.
+**Branch:** `csu15-45n-usb` — independent from the legacy `main` implementation.
 
 This project is a Windows/Python GUI for a laboratory **electrodynamic shaker test bench**, combining continuously refreshed force measurements, a Tektronix oscilloscope screen view, acquisition to RAM followed by Save As into separate CSV files, and independent motorized position adjustment via Arduino Mega.
 
@@ -25,7 +25,7 @@ The user has not provided the model of the function generator or the ICP transdu
 
 ## Experimental signal and control paths
 
-\`\`\`text
+```text
                        VIBRATION / EXCITATION PATH
 
   Function generator (sinusoidal output)
@@ -83,7 +83,7 @@ The user has not provided the model of the function generator or the ICP transdu
          FAULHABER IE2-512 encoder
                   |
        Mega D18 (A), D19 (B)
-\`\`\`
+```
 
 These are **distinct subsystems**: the TIRA S504 is the shaker that generates the sinusoidal mechanical vibration, while the FAULHABER motor is an auxiliary **position-control motor**. Do not confuse the two.
 
@@ -97,7 +97,7 @@ These are **distinct subsystems**: the TIRA S504 is the shaker that generates th
 
 ### Arduino Mega, L298N and FAULHABER wiring
 
-\`\`\`text
+```text
 Arduino Mega D6  -> L298N ENA (remove ENA jumper)
 Arduino Mega D7  -> L298N IN1
 Arduino Mega D8  -> L298N IN2
@@ -110,29 +110,29 @@ IE2-512 encoder A   -> Mega D18
 IE2-512 encoder B   -> Mega D19
 IE2-512 encoder +5V -> Mega +5V
 IE2-512 encoder GND -> Mega GND
-\`\`\`
+```
 
 **Important:** in the verified L298N configuration powered from the motor supply, **do not connect Arduino 5 V to the L298N 5 V pin**. Common GND is required. The firmware caps motor drive commands at 5%. Verified movement/encoder count mapping:
 
-\`\`\`text
+```text
 UP   -> encoder count decreases
 DOWN -> encoder count increases
-\`\`\`
+```
 
 Ordinary BRAKE is dynamic electrical braking; **POSITION BRAKE** is an optional encoder-feedback hold (limited motor PWM), and **E-STOP** disables the H-bridge outputs without physically disconnecting the external DC supply.
 
 ### Force sensor and synchronization
 
 - The calibrated force sensor is **CSU15-45N** (USB); it is **not** the earlier **CS8-10N I2C** sensor used on the legacy branch.
-- The GUI currently converts digital counts to N as \`(raw_counts - baseline_counts) * 45 / 512\`; default baseline is 255 counts and TARE sets a new software zero from recent unloaded readings. Verify physical calibration experimentally.
+- The GUI currently converts digital counts to N as `(raw_counts - baseline_counts) * 45 / 512`; default baseline is 255 counts and TARE sets a new software zero from recent unloaded readings. Verify physical calibration experimentally.
 - Force, scope and motor are independent communication tasks; START/STOP define a common **software recording interval**, not a simultaneous hardware trigger.
 - Continuous live viewing runs even when RAM recording is stopped. **START SAMPLING** clears both plots and begins a RAM recording; **STOP SAMPLING** resets plots for ongoing live display while keeping the completed recording in RAM until **SAVE AS**.
-- SAVE AS creates two files in the selected session directory: \`force_sensor.csv\` and \`oscilloscope.csv\`. They are intentionally **separate** and have different column schemas.
+- SAVE AS creates two files in the selected session directory: `force_sensor.csv` and `oscilloscope.csv`. They are intentionally **separate** and have different column schemas.
 - A dedicated motor thread, force thread, scope thread and CSV writer task prevent blocking USB transfers from monopolizing the GUI. Unexported RAM data may still be lost if the application terminates unexpectedly.
 
 ## Project files
 
-\`\`\`text
+```text
 CSU15-45N-USB/
 ├── Arduino/
 │   └── shaker_controller_CSU15_45N.ino
@@ -141,9 +141,9 @@ CSU15-45N-USB/
 ├── START_GUI.bat
 ├── requirements.txt
 └── README.md
-\`\`\`
+```
 
-Extract the project and double-click **START_GUI.bat** on Windows. It uses the Python 3.12 environment configured in the launcher. Install a VISA backend separately. The legacy root-level \`GUI/shaker_control_gui.py\` in this repository belongs to an earlier sensor configuration and is **not** the current CSU15-45N application.
+Extract the project and double-click **START_GUI.bat** on Windows. It uses the Python 3.12 environment configured in the launcher. Install a VISA backend separately. The legacy root-level `GUI/shaker_control_gui.py` in this repository belongs to an earlier sensor configuration and is **not** the current CSU15-45N application.
 
 ## Existing release notes and operating details
 
