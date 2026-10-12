@@ -182,13 +182,13 @@ It retains the earlier **continuous live monitoring**, START/STOP **RAM recordin
 2. Install a Windows VISA driver: TekVISA or NI-VISA. The USB cable must go to **USB Device** on the rear of MSO4104B, not a USB Host port.
 3. Close the SingleTact manufacturer's app before connecting the CSU15-45N in this GUI.
 4. **Double-click `START_GUI.bat`**. It launches the application using the user's Python 3.12 installation, installing missing Python requirements if necessary.
-5. In **DAQ - Force + Oscilloscope**, select the force COM port and oscilloscope VISA resource; connect both. Use the separate **Motor Control** tab if the motor/encoder connection is required.
+5. Open **Settings**: use **DAQ connections** for force-sensor COM and oscilloscope VISA, and **Motor controller connection** for the Arduino Mega COM port. Return to **Dashboard - DAQ + Motor** for sampling, plots, and motor control.
 
 Requirements are listed in `requirements.txt`: `PySide6`, `pyqtgraph`, `PyVISA`, `pyserial`. A VISA backend is a separate system installation.
 
 ## Main UI
 
-### DAQ - Force + Oscilloscope
+### Dashboard - DAQ + Motor
 
 **Force figure**
 
@@ -202,7 +202,7 @@ Requirements are listed in `requirements.txt`: `PySide6`, `pyqtgraph`, `PyVISA`,
 
 - There is **one single view of the exact scope-screen image**; the old *Waveform data* visualization tab has been removed.
 - Scope sends the original **PNG screenshot** via `SAVE:IMAGE:FILEFORMAT PNG`, `HARDCOPY:INKSAVER OFF`, `HARDCOPY:LAYOUT LANDSCAPE`, and `HARDCOPY START`. The PC displays the received pixels rather than reconstructing a trace.
-- **AUTO REFRESH SCOPE SCREEN** is on by default when a scope connection opens. Set its refresh interval as desired (default 1000 ms) or use **REFRESH SCREEN** for a manual snapshot.
+- **AUTO REFRESH SCOPE SCREEN** is on by default when a scope connection opens. Set its refresh interval as desired (default 50 ms) or use **REFRESH SCREEN** for a manual snapshot.
 - Scroll wheel **zooms** the screenshot, dragging **pans** it; **FIT SCREEN** restores whole-image view. New image frames update the same image item without resetting zoom/pan.
 - The panel displays source PNG resolution and the local time it was received.
 - A PNG is a snapshot from the instrument, **not a zero-latency video feed**. With time-varying/non-repeatable signals, the trace can differ from what the physical LCD displays at a *later* instant. To compare, freeze the physical scope with its own STOP button and request a fresh screenshot.
@@ -214,10 +214,17 @@ Requirements are listed in `requirements.txt`: `PySide6`, `pyqtgraph`, `PyVISA`,
 - Channel, coupling, V/div, vertical position, timebase, trigger source/slope/level, APPLY, RUN, STOP, SINGLE, RESET SCOPE, AUTOSET, READ SETTINGS, REFRESH SCREEN.
 - Scope settings and screenshot/waveform access occur **only inside the dedicated ScopeWorker thread**. Numeric waveform requests and images share the physical VISA session and are serialized.
 
-### Motor Control
+### Motor control (on Dashboard)
 
-- Separate tab for Arduino Mega COM port, UP/DOWN, BRAKE, POSITION BRAKE, encoder counts, E-STOP/RESET.
-- Arduino logic and pin configuration are the same as in the previous release; firmware hard-caps motor commands to 5% PWM.
+- The first tab contains UP/DOWN, BRAKE, POSITION BRAKE, encoder counts, E-STOP/RESET and speed control. The Arduino Mega COM connection itself is now in **Settings**.
+- The Dashboard is vertically scrollable, so all motor controls and both figures remain usable at typical laptop sizes.
+- Arduino logic and pin configuration are unchanged; firmware hard-caps motor commands to 5% PWM.
+
+### Settings (connections)
+
+- **DAQ connections:** select/connect/disconnect SingleTact CSU15-45N and MSO4104B.
+- **Motor controller connection:** select/connect/disconnect Arduino Mega.
+- Live acquisition continues across tab changes.
 
 ## Sampling / RAM / SAVE AS
 
