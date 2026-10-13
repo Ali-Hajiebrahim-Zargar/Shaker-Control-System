@@ -146,24 +146,24 @@ const run=s=>vm.runInContext(s,context),pause=()=>new Promise(r=>setTimeout(r,10
 
  // Reported failure: a 1 Hz guide with only 2.5 saved samples per second.
  // Vary sample phase and amplitude units; markers must remain actual samples,
- // while the frequency must not be manufactured from the requested value.
+ // Frequency now uses measured intervals even when sampling is sparse.
  const sparseT=Array.from({length:251},(_,i)=>i*.4-10);
  context.sparseT=sparseT;
  for(const scale of [1,.003])for(const phase of [0,.2,.7,1.3,2.1]){
   const values=sparseT.map(v=>-.006+scale*Math.sin(2*Math.PI*v+phase));context.sparseY=values;
   const sd=run('detectPeaks(sparseT,sparseY,99,99,.4,{frequency:1,tolerance:.1,noise:.05})');
   assert(sd.samplingLimited);assert(sd.maxIdx.length>40);assert(sd.minIdx.length>40);
-  assert.equal(sd.intervals.length,0);
+  assert(sd.intervals.length>40);
   assert(sd.maxIdx.every(i=>values[i]>=values[i-1]&&values[i]>=values[i+1]));
   assert(sd.minIdx.every(i=>values[i]<=values[i-1]&&values[i]<=values[i+1]));
   context.sparseDetection=sd;
   const sm=run('metrics(sparseT,sparseY,0,.35,.4,sparseDetection)');
-  assert(Number.isNaN(sm.frequency));assert(Number.isFinite(sm.avgMax));assert(Number.isFinite(sm.avgMin));
+  assert(Math.abs(sm.frequency-1)<.015);assert(Number.isFinite(sm.avgMax));assert(Number.isFinite(sm.avgMin));
  }
  assert(run('detectPeaks(sparseT,sparseT.map(()=>7),0,.35,.4,{frequency:1,tolerance:.1,noise:.05}).maxIdx.length')===0);
  assert(run('detectPeaks(sparseT,sparseT.map(()=>7),0,.35,.4,{frequency:1,tolerance:.1,noise:.05}).reason').includes('Constant signal'));
  assert(!run('detectPeaks(sparseT,sparseY,0,.35,.4,{frequency:1.25,tolerance:.1,noise:.05}).samplingLimited'));
- console.log('PASS: 1 Hz at 2.5 saved samples/s, multiple phases/scales, actual extrema and no invented frequency');
+ console.log('PASS: 1 Hz at 2.5 saved samples/s, multiple phases/scales, actual extrema and measured frequency');
 
  // Screenshot-like 5-sample repeating spikes: do not relabel a 2 s visible
  // repetition as a verified 1 s cycle just because the user enters 1 Hz.
@@ -174,7 +174,8 @@ const run=s=>vm.runInContext(s,context),pause=()=>new Promise(r=>setTimeout(r,10
  assert(!els.notice.textContent);assert(gd.data[2].x.length>40);assert(gd.data[3].x.length>40);
  assert(!els['peak-status'].hidden);assert(els['peak-status'].textContent.includes('2.5 samples per expected cycle'));
  assert(els['filter-status'].textContent.includes('Saved-data sample rate (median): 2.5 Hz'));
- assert.equal(els.stats.children[1].children[1].textContent,'N/A');
+ assert(Math.abs(Number(els.stats.children[1].children[1].textContent)-.5)<1e-10);
+ assert(els['peak-status'].textContent.includes('differs from the 1 Hz guide'));
  assert(els['peak-note'].textContent.includes('Sampling-limited observed extrema'));
  const sparseMin=gd.data[3].x.slice(),sparseMax=gd.data[2].x.slice();
  els['period-tolerance'].value='0';await els['apply-peaks'].click();assert.deepEqual(gd.data[3].x,sparseMin);
@@ -190,6 +191,41 @@ const run=s=>vm.runInContext(s,context),pause=()=>new Promise(r=>setTimeout(r,10
  els['applied-frequency'].value='0';await els['apply-peaks'].click();assert(els['peak-status'].hidden);
  assert(Number.isFinite(Number(els.stats.children[1].children[1].textContent)));
  console.log('PASS: sparse scope Update peaks keeps max/min, persistent warning, zoom/filter/toggles and auto recovery');
+
+ // Reproduce the latest screenshot's failure: a long inactive baseline makes
+ // all visible troughs lie above the old mean - SD gate. A small shoulder on
+ // each major oscillation used to give 200 maxima, zero minima and no frequency.
+ context.baselineT=Array.from({length:1000},(_,i)=>i*.4-200);
+ context.baselineY=context.baselineT.map((_,i)=>i<500?-.02:[-.0065,-.0086,-.004,-.0064,-.0060][i%5]);
+ for(const f of [0,1]){
+  const d=run(`detectPeaks(baselineT,baselineY,.02,.35,.4,{frequency:${f},tolerance:.1,noise:.05})`);
+  assert(d.maxIdx.length>=98&&d.maxIdx.length<=100);
+  assert.equal(d.minIdx.length,d.maxIdx.length-1);
+  assert(d.maxIdx.every(i=>context.baselineY[i]===-.004));
+  assert(d.minIdx.every(i=>context.baselineY[i]===-.0086));
+  const hz=d.intervals.length/d.intervals.reduce((s,p)=>s+p.duration,0);assert(Math.abs(hz-.5)<1e-10);
+  if(f)assert(d.reason.includes('differs from the 1 Hz guide'));
+ }
+ // A constant amplitude offset must change the values, not the marker indices.
+ context.shiftedY=context.baselineY.map(v=>v+18);
+ const original=run('detectPeaks(baselineT,baselineY,.02,.35,.4,{frequency:0,tolerance:.1,noise:.05})');
+ const shifted=run('detectPeaks(baselineT,shiftedY,.02,.35,.4,{frequency:0,tolerance:.1,noise:.05})');
+ assert.deepEqual(shifted.maxIdx,original.maxIdx);assert.deepEqual(shifted.minIdx,original.minIdx);
+ console.log('PASS: inactive baseline/shoulder regression, real minima, one main peak per oscillation, DC invariance');
+
+ // Never suppress the input-versus-applied distinction, including a failed apply.
+ assert(els['peak-active'].textContent.includes('Active mode: AUTOMATIC'));
+ els['applied-frequency'].value='1';await els['applied-frequency'].listeners.input();
+ assert(els['peak-active'].textContent.includes('NOT APPLIED'));
+ assert(els['peak-active'].textContent.includes('AUTOMATIC'));
+ let enterPrevented=false;
+ await els['applied-frequency'].listeners.keydown({key:'Enter',preventDefault(){enterPrevented=true;}});
+ assert(enterPrevented);assert(els['peak-active'].textContent.includes('Applied guide: 1 Hz'));
+ assert(!els['peak-active'].textContent.includes('NOT APPLIED'));
+ els['applied-frequency'].value='1.25';await els['applied-frequency'].listeners.input();await els['apply-peaks'].click();
+ assert(els['peak-active'].textContent.includes('Applied guide: 1 Hz'));
+ assert(els['peak-active'].textContent.includes('NOT APPLIED'));
+ console.log('PASS: active mode, pending frequency, Enter apply and failed apply preserve the displayed active guide');
 
  console.log('ALL NODE INTERACTION TESTS PASSED (Plotly/DOM adapter; no browser rendering)');
 })().catch(e=>{console.error(e);process.exitCode=1;});

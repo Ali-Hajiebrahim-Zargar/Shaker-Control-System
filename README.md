@@ -35,7 +35,7 @@ Open `CSU15-45N-USB/` and double-click `START_GUI.bat` on Windows. Install a VIS
 
 ## Offline CSV viewer
 
-[CSV-Viewer — installation and complete usage guide](CSV-Viewer/README.md) contains the standalone **Shaker CSV Viewer 1.2** for saved force and oscilloscope recordings. It includes raw/filtered plots, frequency-guided maximum/minimum detection, adjustable timing/noise thresholds, zoom-dependent metrics, two-point measurements and vertical Y scrolling. Sparse recordings retain observed extrema with an explicit sampling warning.
+[CSV-Viewer — installation and complete usage guide](CSV-Viewer/README.md) contains the standalone **Shaker CSV Viewer 1.3** for saved force and oscilloscope recordings. It includes raw/filtered plots, frequency-guided maximum/minimum detection, adjustable timing/noise thresholds, zoom-dependent metrics, two-point measurements and vertical Y scrolling. Automatic and sparse detection suppress weak shoulder reversals, retain resolved troughs and estimate observed peak repetition with explicit sampling diagnostics. A [Persian guide](CSV-Viewer/README_FA.md) is included.
 
 Open `CSV-Viewer/`, run `INSTALL_REQUIREMENTS.bat` once, then launch `START_VIEWER.bat`. Browse to `force_sensor.csv` or `oscilloscope.csv` and press **PLOT**. Saved force values in Newtons are preserved, and scope captures remain separate. Analysis runs offline after dependency installation.
 

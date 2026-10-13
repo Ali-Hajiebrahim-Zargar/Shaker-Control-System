@@ -23,7 +23,7 @@ import webbrowser
 import numpy as np
 import pandas as pd
 
-APP_TITLE = "Shaker CSV Viewer 1.2"
+APP_TITLE = "Shaker CSV Viewer 1.3"
 FORMATS = ("Auto detect", "Force / combined project CSV", "Scope project CSV", "Legacy force counts", "Legacy Tektronix CSV")
 
 
@@ -356,29 +356,30 @@ HTML_TEMPLATE = r'''<!doctype html>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#17263c;background:#f3f6fa;font-size:14px}*{box-sizing:border-box}body{margin:0;padding:22px;max-width:1680px;margin-inline:auto}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}h1{font-size:26px;margin:0 0 5px}h2{font-size:14px;margin:0 0 12px;color:#344b67}p{margin:5px 0}.muted{color:#617188;font-size:13px}.badge{background:#e6effc;color:#244f8a;padding:8px 12px;border-radius:20px;white-space:nowrap}.panel{padding:16px;border:1px solid #dce3ed;border-radius:10px;background:white;margin-bottom:12px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row+.row{margin-top:12px}label{font-weight:600;font-size:13px}select,input,button{font:inherit;border:1px solid #c5cfdf;border-radius:5px;padding:7px 9px;background:white;color:inherit}input[type=number]{width:120px}input[type=checkbox]{accent-color:#2368b0}button{cursor:pointer;background:#f7f9fc;font-weight:600}button:hover{background:#e6effc}button.primary{background:#205fa7;border-color:#205fa7;color:white}button:disabled{opacity:.5;cursor:default}select{max-width:100%}#record{min-width:280px;flex:1}#notice{white-space:pre-line;color:#80551a;background:#fff8ea;padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:12px}#record-note{margin-top:9px;line-height:1.55}#filter-status{margin-top:9px}.controls{display:grid;grid-template-columns:1.1fr 1fr;gap:12px}.controls>.panel{margin-bottom:12px}#plot{height:540px;width:100%;min-width:0}.plot-panel{padding:5px 10px;display:grid;grid-template-columns:minmax(0,1fr) 58px;gap:4px}.y-scroll-panel{display:flex;align-items:center;flex-direction:column;justify-content:center;gap:8px;padding:12px 0}.y-scroll-panel label{font-size:11px;text-align:center}.y-scroll-panel button{padding:4px 10px}#y-scroll{writing-mode:vertical-lr;direction:rtl;appearance:auto;width:24px;height:330px;padding:0;accent-color:#2368b0;cursor:ns-resize}#y-position{font-size:10px;max-width:56px;overflow-wrap:anywhere;text-align:center}.peak-help{margin-top:8px;line-height:1.5}.stats-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin-top:10px;font-variant-numeric:tabular-nums}th,td{text-align:right;border-bottom:1px solid #e6ebf2;padding:10px 9px;white-space:nowrap}th:first-child,td:first-child{text-align:left}th{font-size:12px;color:#586d85;background:#f7f9fc}#measurement{white-space:pre-line;line-height:1.55}.bottom{display:grid;grid-template-columns:2fr 1fr;gap:12px}.explain{line-height:1.6}summary{cursor:pointer;font-weight:600}details p{margin-top:9px}#visible{font-variant-numeric:tabular-nums}@media(max-width:1050px){.controls,.bottom{grid-template-columns:1fr}body{padding:12px}#plot{height:480px}header{align-items:flex-start}.badge{display:none}}:focus-visible{outline:3px solid #95bfff;outline-offset:2px}
 </style>
 <script>__PLOTLY__</script></head><body>
-<header><div><h1>Shaker CSV Viewer <span class="muted">1.2</span></h1><p id="file" class="muted"></p></div><span class="badge">OFFLINE ANALYSIS</span></header>
+<header><div><h1>Shaker CSV Viewer <span class="muted">1.3</span></h1><p id="file" class="muted"></p></div><span class="badge">OFFLINE ANALYSIS</span></header>
 <div id="notice" role="status" hidden></div>
 <section class="panel"><div class="row"><label for="channel" id="channel-label">Channel</label><select id="channel"></select><label for="record" id="record-label">Signal / capture</label><select id="record"></select><button id="previous">← Previous</button><button id="next">Next →</button></div><p id="record-note" class="muted"></p></section>
 <div class="controls">
 <section class="panel"><h2>FILTER & PEAK DETECTION</h2><div class="row"><label for="filter">Filter</label><select id="filter"><option value="none">None</option><option value="lowpass">Low-pass</option><option value="highpass">High-pass</option><option value="bandpass">Band-pass</option></select><label for="cut1" id="cut-label">Cutoff (Hz)</label><input id="cut1" type="number" value="5" min="0" step="any"><span id="upper-wrap" hidden><label for="cut2">Upper (Hz)</label> <input id="cut2" type="number" value="20" min="0" step="any"></span><button id="apply-filter" class="primary">Apply filter</button><button id="reset-filter">Reset</button></div>
 <div class="row"><label for="applied-frequency">Applied frequency (Hz)</label><input id="applied-frequency" type="number" min="0" step="any" placeholder="Auto" aria-describedby="peak-help"><label for="period-tolerance">Period tolerance (%)</label><input id="period-tolerance" type="number" min="0" max="45" step="1" value="10"><label for="noise-threshold">Noise threshold (% range)</label><input id="noise-threshold" type="number" min="0.1" max="50" step="0.5" value="5"><button id="apply-peaks" class="primary">Update peaks</button></div>
-<p class="muted peak-help" id="peak-help">Enter the shaker frequency for one max/min pair per accepted complete cycle. With fewer than 4 saved samples per expected cycle, markers show observed extrema only. Blank or 0 = automatic detection.</p>
+<p class="muted peak-help" id="peak-help">Enter the shaker frequency for one max/min pair per accepted complete cycle. With fewer than 4 saved samples per expected cycle, peaks and their repetition are estimated from observed swings. Blank or 0 = automatic detection.</p>
+<p id="peak-active" class="peak-help" role="status" style="font-weight:600;color:#205fa7"></p>
 <p id="peak-status" role="status" class="peak-help" style="color:#80551a;background:#fff8ea;padding:10px;border-radius:6px" hidden></p>
-<div class="row"><label for="distance">Auto: min peak spacing (s)</label><input id="distance" type="number" min="0" step="any" value="0.08"><label for="threshold">Auto: level threshold (× SD)</label><input id="threshold" type="number" min="0" step="any" value="0.35"></div>
+<div class="row"><label for="distance">Auto: min peak spacing (s)</label><input id="distance" type="number" min="0" step="any" value="0.08"><label for="threshold">Auto: min swing (× SD)</label><input id="threshold" type="number" min="0" step="any" value="0.35"></div>
 <div class="row"><label><input id="show-raw" type="checkbox" checked> Raw</label><label><input id="show-filtered" type="checkbox" checked> Filtered</label><label><input id="show-max" type="checkbox" checked> Max markers</label><label><input id="show-min" type="checkbox" checked> Min markers</label></div><p id="filter-status" class="muted"></p></section>
 <section class="panel"><h2>VIEW & AXES</h2><div class="row"><label for="x-start">X start (s)</label><input id="x-start" type="number" step="any"><label for="x-end">X end (s)</label><input id="x-end" type="number" step="any"><button id="apply-x">Apply X</button><button id="reset-x">Full X</button></div>
 <div class="row"><label for="y-center">Y center</label><input id="y-center" type="number" step="any"><label for="y-span">Y span</label><input id="y-span" type="number" step="any" min="0"><button id="apply-y">Apply Y</button><button id="reset-y">Fit Y</button></div>
 <div class="row"><label for="drag">Mouse drag</label><select id="drag"><option value="zoom">Box zoom (X + Y)</option><option value="pan">Pan</option></select><button id="reset-view">Reset view</button><button id="export">Export visible CSV</button></div><p class="muted" style="margin-top:10px">Scroll over the plot to zoom. The right-side slider, arrows or wheel move the Y view without changing its span. Use the bottom slider for time selection. Fit Y includes all visible waveform traces.</p></section>
 </div>
 <section class="panel plot-panel"><div id="plot" aria-label="Interactive raw and filtered waveform"></div><aside class="y-scroll-panel" aria-label="Vertical plot navigation"><label for="y-scroll">Y position</label><button id="y-up" title="Move view up" aria-label="Move view up">▲</button><input id="y-scroll" type="range" min="0" max="1000" step="any" value="500" aria-label="Vertical view position"><button id="y-down" title="Move view down" aria-label="Move view down">▼</button><output id="y-position"></output><button id="y-fit" title="Fit visible waveforms vertically">Fit</button></aside></section>
-<div class="bottom"><section class="panel"><h2>VISIBLE WINDOW METRICS</h2><p id="visible" class="muted"></p><div class="stats-wrap"><table><thead><tr><th>Signal</th><th>Detected freq. (Hz)</th><th>Avg. peak max</th><th>Avg. trough min</th><th>Absolute max</th><th>Absolute min</th><th>RMS</th></tr></thead><tbody id="stats"></tbody></table></div><p id="peak-note" class="muted" style="margin-top:10px"></p></section>
+<div class="bottom"><section class="panel"><h2>VISIBLE WINDOW METRICS</h2><p id="visible" class="muted"></p><div class="stats-wrap"><table><thead><tr><th>Signal</th><th>Peak repetition (Hz)</th><th>Avg. peak max</th><th>Avg. trough min</th><th>Absolute max</th><th>Absolute min</th><th>RMS</th></tr></thead><tbody id="stats"></tbody></table></div><p id="peak-note" class="muted" style="margin-top:10px"></p></section>
 <section class="panel"><h2>TWO-POINT MEASUREMENT</h2><div class="row"><label for="measure-trace">Measure on</label><select id="measure-trace"><option value="1">Filtered</option><option value="0">Raw</option></select><button id="clear-measurement">Clear</button></div><p id="measurement"></p></section></div>
 <details class="panel explain"><summary>How values and filters are calculated</summary>
 <p>Force (N) columns are plotted exactly as saved, including the acquisition software’s calibration and manual tare. The 45 N count conversion is used only for count-only legacy files. Motor position remains in encoder counts.</p>
 <p>Low-pass and high-pass are causal first-order RC-style IIR filters, using the actual interval between samples. Band-pass applies high-pass then low-pass. These match the filter family in your previous viewer; they are not Butterworth or zero-phase filters. They change phase/amplitude and have startup transients. Filtering is applied to the whole selected recording/capture before visible-window analysis. Large gaps restart the filter.</p>
 <p>With an applied frequency f, expected period T = 1/f. Rising crossings through a small hysteresis band define candidate cycles. The band is centered between the 2nd and 98th percentile signal levels, and its total width is the Noise threshold percentage of that robust amplitude range. Only consecutive crossings separated by T within the selected period tolerance are accepted. One maximum and one minimum are taken from each complete accepted cycle, with flat extrema placed at a plateau midpoint. No assumption is made that the minimum occurs half a cycle after the maximum. Partial, missing or out-of-tolerance cycles are excluded, and detected frequency is calculated from measured accepted cycle durations, not copied from your input.</p>
-<p>Sampling-limited mode: if the applied frequency is below Nyquist but there are fewer than 4 saved samples per expected cycle, strict per-cycle matching is suspended. Observed local maxima above mean + 0.35 × SD and intervening minima below mean − 0.35 × SD are marked, using the selected amplitude noise threshold to reject shallow troughs. No extra spacing rule is imposed. The detected frequency is N/A because these extrema have not been validated as cycles of the entered frequency. Their averages describe saved sample values, not reconstructed true peaks. Period tolerance has no effect in this mode. The 4-sample boundary is a viewer heuristic, not a guarantee of accurate amplitudes above it. Use a denser saved waveform for reliable cycle extrema; filters cannot restore missing samples.</p>
-<p>Blank or zero applied frequency uses automatic local-maximum detection with the spacing and standard-deviation controls. Its minima must also lie below the mean − level threshold × SD and have sufficient drop from both adjacent maxima. The amplitude threshold helps reject the upper-shoulder minima produced by small extra peaks. Both methods operate on the complete selected capture; zoom changes which detected extrema and intervals contribute to visible metrics. Absolute extrema and RMS still use all visible samples. A wrong applied frequency may produce no accepted cycles; inspect the markers and the matching-cycle count.</p>
+<p>Sampling-limited mode: below 4 saved samples per expected cycle, the guide is checked against observed peak repetition instead of forcing strict per-cycle matching. Maxima are confirmed after a downward swing; another maximum requires a new upward swing. The minimum swing is the larger of the selected noise percentage of the robust range and 0.35 × SD. One lowest recorded trough is taken between consecutive retained maxima. No global mean level rejects troughs. Frequency is 1 / mean of complete visible peak-to-peak intervals with resolved troughs, including sparsely saved data; it is an estimate of observed repetition, not proof of the generator frequency. A mismatch with the input is reported. Sampling uncertainty, aliasing and harmonics can bias this estimate. A denser saved waveform is needed for reliable cycle extrema.</p>
+<p>Blank or zero applied frequency uses the same swing-based automatic detection with the editable minimum-spacing and minimum-swing SD controls. Noise threshold is an amplitude reversal threshold, not an absolute voltage/force level. Weak shoulder maxima and dips are suppressed together. Both methods operate on the complete selected capture; zoom selects the detected extrema and complete intervals used in visible metrics. Absolute extrema and RMS use every visible sample. A single peak or partial cycle has no frequency estimate. Normal guided mode still rejects cycles outside the selected timing tolerance.</p>
 <p>Each scope capture has its own waveform time axis. Capture Time is a PC retrieval timestamp, not a hardware trigger time. Captures are never concatenated; this viewer does not infer force/voltage phase alignment. A constant CSV voltage stays constant: missing waveform information cannot be reconstructed.</p>
 <p>Cursor frequency 1/Δt is the waveform frequency only when the two selected points are one full cycle apart. The third click starts a new pair. Switching signal/capture or changing filters clears cursors. Visible CSV export contains every sample in the visible X window, with original time, raw and filtered values.</p>
 </details>
@@ -420,17 +421,48 @@ function extremeIndex(yy,a,b,isMax){
  }
  return bestStart+Math.floor((bestLength-1)/2);
 }
+function reversalMaxima(tx,yy,dtMedian,minSwing){
+ // Track a rising excursion, confirm its maximum only after a real drop,
+ // and re-arm only after a real rise. A DC offset never sets a peak level.
+ const maxima=[];let direction=0,low=yy[0],high=yy[0],start=0,end=0,segmentStart=0;
+ for(let i=1;i<yy.length;i++){
+  const value=yy[i];
+  if(tx[i]-tx[i-1]>5*dtMedian){direction=0;low=high=value;start=end=segmentStart=i;continue;}
+  if(direction===0){
+   if(value<low)low=value;
+   if(value>high){high=value;start=end=i;}else if(value===high){if(yy[i-1]!==high)start=i;end=i;}
+   if(value-low>=minSwing){direction=1;high=value;start=end=i;}
+   else if(high-value>=minSwing){direction=-1;low=value;}
+  }else if(direction===1){
+   if(value>high){high=value;start=end=i;}else if(value===high){if(yy[i-1]!==high)start=i;end=i;}
+   if(high-value>=minSwing){
+    const index=Math.floor((start+end)/2);
+    if(index>segmentStart)maxima.push(index);
+    direction=-1;low=value;
+   }
+  }else{
+   if(value<low)low=value;
+   if(value-low>=minSwing){direction=1;high=value;start=end=i;}
+  }
+ }
+ return maxima;
+}
 function detectPeaks(tx,yy,minSpacing,sdFactor,dtMedian,settings){
  const out={maxIdx:[],minIdx:[],intervals:[],rejected:0,reason:'',guided:settings.frequency>0,samplingLimited:false};
  if(settings.frequency>0){
   if(settings.frequency>=.5/dtMedian){out.reason='Applied frequency is at/above this signal’s median-based Nyquist limit.';return out;}
   const samplesPerCycle=1/(settings.frequency*dtMedian);
-  // Sparse samples cannot support the strict crossing-period test reliably.
-  // Keep observable extrema, but never label them verified cycles or copy f.
+  // Sparse captures use observed swings, never forced cycles or copied f.
   if(samplesPerCycle<4-1e-9){
    const observed=detectPeaks(tx,yy,0,.35,dtMedian,{...settings,frequency:0});
-   return {...observed,guided:true,samplingLimited:true,intervals:[],reason:
-    `Sampling limited: ${format(1/dtMedian)} saved samples/s gives only ${format(samplesPerCycle)} samples per expected cycle at ${format(settings.frequency)} Hz. Showing observed extrema; they are not verified cycle peaks. Detected frequency is N/A. Save a denser waveform to resolve cycle peaks. Period tolerance is not used in this mode.`+(observed.reason?' '+observed.reason:'')};
+   const periods=observed.intervals.map(p=>p.duration),period=mean(periods),measured=1/period;
+   // Endpoint uncertainty decreases when averaging multiple complete intervals.
+   const timingAllowance=2*dtMedian/Math.max(1,periods.length),expected=1/settings.frequency;
+   const mismatch=periods.length&&Math.abs(period-expected)>expected*settings.tolerance+timingAllowance;
+   return {...observed,guided:true,samplingLimited:true,reason:
+    `Sampling limited: ${format(1/dtMedian)} saved samples/s gives only ${format(samplesPerCycle)} samples per expected cycle at ${format(settings.frequency)} Hz. Markers are observed extrema; frequency estimates their repetition, not a verified excitation frequency. `+
+    (mismatch?`Observed repetition (${format(measured)} Hz) differs from the ${format(settings.frequency)} Hz guide. Check the CSV time axis and acquisition; the guide is not forced onto the result. `:'')+
+    'Save a denser waveform to resolve cycle peaks.'+(observed.reason?' '+observed.reason:'')};
   }
  }
  if(yy.length<3)return out;
@@ -464,12 +496,8 @@ function detectPeaks(tx,yy,minSpacing,sdFactor,dtMedian,settings){
   return out;
  }
  const average=mean(yy);let variance=0;for(const v of yy)variance+=(v-average)**2;
- const sd=Math.sqrt(variance/yy.length),limit=average+sdFactor*sd,lowLimit=average-sdFactor*sd,peaks=[];
- for(let i=1;i<yy.length-1;i++){
-  if(tx[i]-tx[i-1]>5*dtMedian||yy[i]<=yy[i-1]||yy[i]<limit)continue;
-  let j=i;while(j+1<yy.length&&yy[j+1]===yy[i]&&tx[j+1]-tx[j]<=5*dtMedian)j++;
-  if(j+1<yy.length&&tx[j+1]-tx[j]<=5*dtMedian&&yy[j]>yy[j+1])peaks.push(Math.floor((i+j)/2));i=j;
- }
+ const sd=Math.sqrt(variance/yy.length),minSwing=Math.max(amplitudeThreshold,sdFactor*sd,Number.EPSILON*levels.span);
+ const peaks=reversalMaxima(tx,yy,dtMedian,minSwing);
  const kept=[];
  for(const i of peaks){if(!kept.length||tx[i]-tx[kept[kept.length-1]]>=minSpacing)kept.push(i);else if(yy[i]>yy[kept[kept.length-1]])kept[kept.length-1]=i;}
  out.maxIdx=kept;
@@ -478,11 +506,13 @@ function detectPeaks(tx,yy,minSpacing,sdFactor,dtMedian,settings){
   for(let j=a+1;j<=b;j++)if(tx[j]-tx[j-1]>5*dtMedian){broken=true;break;}
   if(broken)continue;
   const trough=extremeIndex(yy,a,b+1,false);
-  // Reject shoulder dips: require a low level and a drop from BOTH maxima.
-  if(trough>a&&trough<b&&yy[trough]<=lowLimit&&Math.min(yy[a],yy[b])-yy[trough]>=amplitudeThreshold){
+  // Both bounding peaks must rise enough above the trough. No global mean gate.
+  if(trough>a&&trough<b&&Math.min(yy[a],yy[b])-yy[trough]>=minSwing){
    out.minIdx.push(trough);out.intervals.push({a:tx[a],b:tx[b],duration:tx[b]-tx[a]});
   }else out.rejected++;
  }
+ if(!out.maxIdx.length)out.reason='No swings exceed the amplitude threshold. Reduce noise/prominence threshold or inspect the recording.';
+ else if(!out.intervals.length)out.reason='No complete peak-to-peak intervals with a resolved trough. Show more cycles or review the amplitude threshold.';
  return out;
 }
 function peakOptions(){return {frequency:appliedFrequency,tolerance:periodTolerance,noise:noiseThreshold};}
@@ -516,8 +546,9 @@ function updateMetrics(){
  for(const [name,m] of rows){const tr=document.createElement('tr');for(const v of [name,format(m.frequency),format(m.avgMax),format(m.avgMin),format(m.max),format(m.min),format(m.rms)]){const cell=document.createElement('td');cell.textContent=v;tr.appendChild(cell);}$('stats').appendChild(tr);}
  $('visible').textContent=`${format(x0)} → ${format(x1)} s · ${b-a} samples · amplitude unit: ${record.unit}`;
  const limited=d.filtered.samplingLimited;
- const guidance=limited?`Sampling-limited observed extrema · requested ${format(appliedFrequency)} Hz. Average peaks/troughs are saved sample values, not verified per-cycle extrema.`:appliedFrequency>0?`Guided by ${format(appliedFrequency)} Hz · expected T=${format(1/appliedFrequency)} s ±${format(100*periodTolerance)}%. Detected frequency uses measured cycle times.`:'Automatic detection · frequency uses intervals between maxima with accepted troughs.';
- $('peak-note').textContent=`${guidance} Visible max/min: raw ${rm.maxIdx.length}/${rm.minIdx.length}, filtered ${fm.maxIdx.length}/${fm.minIdx.length}. ${limited?'No frequency-validated cycles. ':`Complete visible intervals: raw ${rm.periods}, filtered ${fm.periods}. `}${appliedFrequency>0&&!limited?'Filtered: '+d.filtered.intervals.length+' accepted cycles and '+d.filtered.rejected+' rejected intervals in the full capture. ':''}${d.filtered.reason} Markers refer to the filtered signal.`;
+ const guidance=limited?`Sampling-limited observed extrema · requested ${format(appliedFrequency)} Hz. Frequency is an observed peak-repetition estimate, not a verified excitation frequency.`:appliedFrequency>0?`Guided by ${format(appliedFrequency)} Hz · expected T=${format(1/appliedFrequency)} s ±${format(100*periodTolerance)}%. Detected frequency uses measured cycle times.`:'Automatic detection · no input frequency applied. Frequency uses intervals between prominent maxima with resolved troughs.';
+ $('peak-note').textContent=`${guidance} Visible max/min: raw ${rm.maxIdx.length}/${rm.minIdx.length}, filtered ${fm.maxIdx.length}/${fm.minIdx.length}. Complete visible intervals: raw ${rm.periods}, filtered ${fm.periods}. ${appliedFrequency>0&&!limited?'Filtered: '+d.filtered.intervals.length+' accepted cycles and '+d.filtered.rejected+' rejected intervals in the full capture. ':''}${d.filtered.reason} Markers refer to the filtered signal.`;
+ updatePeakState();
  // Persistent diagnostics beside Update peaks, independent of transient errors.
  const messages=d.raw.reason===d.filtered.reason?[d.filtered.reason]:[d.raw.reason?'Raw: '+d.raw.reason:'',d.filtered.reason?'Filtered: '+d.filtered.reason:''];
  $('peak-status').textContent=messages.filter(Boolean).join(' ');$('peak-status').hidden=!$('peak-status').textContent;
@@ -577,6 +608,13 @@ async function applyFilter(){
 function peakUI(){
  const guided=numericInput('applied-frequency')>0;
  $('distance').disabled=guided;$('threshold').disabled=guided;$('period-tolerance').disabled=!guided;
+ updatePeakState();
+}
+function updatePeakState(){
+ const text=$('applied-frequency').value.trim(),draft=text===''?0:Number(text);
+ const pending=draft!==appliedFrequency||numericInput('period-tolerance')/100!==periodTolerance||numericInput('noise-threshold')/100!==noiseThreshold||(!draft&&(numericInput('distance')!==peakDistance||numericInput('threshold')!==threshold));
+ $('peak-active').textContent=(appliedFrequency>0?`Applied guide: ${format(appliedFrequency)} Hz`:'Active mode: AUTOMATIC — no frequency applied')+(pending?' · Changed settings are NOT APPLIED. Click Update peaks or press Enter.':' · Settings applied.');
+ $('apply-peaks').textContent=pending?'Update peaks *':'Update peaks';
 }
 async function peakSettings(){
  const text=$('applied-frequency').value.trim(),f=text===''?0:Number(text),t=numericInput('period-tolerance'),n=numericInput('noise-threshold');
@@ -646,6 +684,8 @@ function exportVisible(){
 on('record','change',loadRecord);on('channel','change',async()=>{recordOptions();await loadRecord();});
 on('previous','click',async()=>{$('record').selectedIndex--;await loadRecord();});on('next','click',async()=>{$('record').selectedIndex++;await loadRecord();});
 on('applied-frequency','input',peakUI);
+for(const id of ['period-tolerance','noise-threshold','distance','threshold'])on(id,'input',updatePeakState);
+for(const id of ['applied-frequency','period-tolerance','noise-threshold','distance','threshold'])$(id).addEventListener('keydown',async event=>{if(event.key==='Enter'&&!busy){event.preventDefault();try{await peakSettings();}catch(e){report(e.message);}}});
 on('y-scroll','input',()=>{if(!yScrollLimits)return;return panY(yScrollLimits[0]+Number($('y-scroll').value)/1000*(yScrollLimits[1]-yScrollLimits[0]));});
 on('y-up','click',()=>shiftY(1));on('y-down','click',()=>shiftY(-1));on('y-fit','click',fitY);
 $('y-scroll').addEventListener('wheel',event=>{event.preventDefault();if(!busy&&event.deltaY)shiftY(event.deltaY<0?1:-1).catch(e=>report(e.message));},{passive:false});

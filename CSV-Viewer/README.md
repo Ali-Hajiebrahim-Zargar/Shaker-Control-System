@@ -1,10 +1,12 @@
 # Shaker CSV Viewer
 
-**Version 1.2** · Standalone analysis of saved force, oscilloscope and motor-position recordings from this Shaker Control System project.
+**Version 1.3** · Standalone analysis of saved force, oscilloscope and motor-position recordings from this Shaker Control System project.
 
 Browse to a CSV, click **PLOT**, and analyze its raw and filtered signals in an interactive browser plot. The viewer includes applied-frequency guidance for maximum/minimum detection, editable noise and timing tolerances, live metrics for the visible time window, vertical scrolling, and two-point measurements.
 
 The current laboratory setup uses a **SingleTact CSU15-45N calibrated USB force sensor (45 N nominal range)** and a **Tektronix MSO4104B oscilloscope**. Motor-position values come from the FAULHABER/Arduino system described in the [acquisition and hardware guide](../CSU15-45N-USB/README.md).
+
+[راهنمای فارسی و توضیح اصلاح نسخهٔ ۱٫۳](README_FA.md)
 
 ## 1. Installation and launch
 
@@ -34,7 +36,7 @@ No COM connection, Arduino, sensor or VISA driver is required to analyze existin
 
 ### Updating an existing installation
 
-Replace the viewer's source files, restart it, select the CSV and press **PLOT** again. **Previously generated HTML plots contain the older viewer code; opening one does not load new Python changes.** Version 1.2 is shown in the desktop title and plot heading.
+Replace the viewer's source files, restart it, select the CSV and press **PLOT** again. **Previously generated HTML plots contain the older viewer code; opening one does not load new Python changes.** Version 1.3 is shown in the desktop title and plot heading.
 
 ## 2. What each file does
 
@@ -127,25 +129,26 @@ This feature works for **both force and oscilloscope waveforms**.
 2. Set **Period tolerance (%)**, initially **10**.
 3. Set **Noise threshold (% range)**, initially **5**.
 4. Click **Update peaks**.
-5. Check the status beside the controls and beneath the metrics: **“Guided by … Hz”** means normal cycle matching; **“Sampling-limited observed extrema”** means the saved waveform is too sparse for that mode. Inspect the markers and diagnostics.
+5. Check **Applied guide: … Hz** beside the controls. **Active mode: AUTOMATIC** means no input frequency is active; **NOT APPLIED** means click Update peaks or press Enter. Then check the text beneath the metrics: **“Guided by … Hz”** means normal cycle matching; **“Sampling-limited observed extrema”** means the saved waveform is too sparse for that mode. Inspect the markers and diagnostics.
 
 Changing a field alone does not apply the numerical settings. The entered frequency controls peak selection; it does not change the recorded waveform or drive the function generator.
 
-### Sparse recordings: why entering 1 Hz used to remove the markers
+### Sparse recordings and the version 1.3 correction
 
-The reported scope screenshot shows **2.5 saved samples/s**, equivalent to **0.4 s between samples**. At an entered **1 Hz**, this gives only **2.5 saved samples per expected cycle**. Version 1.1 required at least three samples between successive rising crossings and accepted periods only within the selected tolerance. Sparse samples can miss crossings or shift their interpolated times enough to reject all candidate cycles. The default ±10% window for 1 Hz is only 0.9–1.1 s; entering the known excitation frequency cannot supply the missing waveform points.
+The reported screenshots contain about **2.5 saved samples/s**: **0.4 s between samples**, or only **2.5 samples per expected cycle** with a **1 Hz** guide. Version 1.1 used strict crossing-period matching that could reject every cycle. Version 1.2 retained automatic extrema in this case but disabled the frequency estimate. Its global-mean threshold could still reject all troughs when the capture included a different inactive baseline, while counting small shoulder maxima.
 
-Version 1.2 uses **sampling-limited mode** whenever the guide is below the median-based Nyquist limit but `saved_sample_rate / applied_frequency < 4`:
+**Version 1.3 fixes those two automatic/sparse-mode problems:**
 
-- The viewer retains **observed local extrema** instead of filtering them all out with the cycle-period test.
-- Maxima must reach `mean + 0.35 × SD`; an intervening minimum must reach `mean − 0.35 × SD` and have a drop from both adjacent maxima of at least the selected **Noise threshold** times the robust amplitude range. No additional time-spacing rule is imposed. These fixed level settings are independent of the disabled automatic controls.
-- Markers stay on actual recorded samples. Their averages describe those samples; they are **not verified maxima/minima of every applied cycle** and do not recover true peaks between samples.
-- **Detected frequency is N/A** in this mode. The requested 1 Hz is retained as a guide setting, not presented as a measured result. **Period tolerance is not used** while this fallback is active.
-- A persistent warning appears beside **Update peaks**, and the status shows the saved-data sample rate and saved samples per expected cycle. Zooming or fitting axes does not dismiss this warning.
+- A maximum is confirmed after the signal falls by a minimum amplitude; a new maximum requires a new rise of that amplitude. Weak shoulder reversals are therefore suppressed as a pair. Flat maxima use a midpoint of the most recently tracked tied plateau; troughs use the longest lowest plateau between retained maxima.
+- The amplitude threshold is `max(noise_fraction * robust_range, SD_factor * population_SD)`. No absolute voltage/force level or `mean - SD` condition rejects a minimum. The robust range is the 2nd-to-98th percentile difference, with full range as a fallback.
+- The minimum is the lowest saved value between consecutive retained maxima, provided it lies between them and its depth below both reaches the amplitude threshold. Intervals spanning recording gaps are excluded.
+- Frequency is estimated from the **actual complete visible peak-to-peak intervals with resolved troughs**, even when sampling is sparse: `f = number_of_intervals / sum(interval_durations)`. It is labelled **Peak repetition (Hz)**. The input frequency is never copied into the result.
 
-The four-sample boundary is a **viewer heuristic**, not a sampling theorem or a guarantee of accurate extrema at four samples/cycle. For accurate cycle amplitudes, save a more densely sampled waveform from acquisition. Changing the viewer's frequency or filter cannot restore unsaved values. The displayed rate describes the **CSV waveform timestamps**, not necessarily the oscilloscope's internal ADC rate; this screenshot alone does not establish why the export is sparse.
+When a positive guide gives fewer than four saved samples per expected cycle, this is explicitly **sampling-limited mode**. It uses the selected noise threshold, a fixed `SD_factor = 0.35`, and no additional minimum spacing. The guide is compared with observed repetition; it does not impose artificial peaks. A full-capture discrepancy larger than the entered period tolerance plus an endpoint timing allowance (`2 * median_dt / interval_count`) is reported beside the controls. The timing allowance is a heuristic, not a statistical confidence interval. The same mode works for raw and filtered force/scope signals.
 
-The same behavior applies to force and scope data, and to both raw and filtered metrics. Constant signals still have no extrema. A guide at/above Nyquist is rejected with an error; it does not trigger this fallback. To return to ordinary automatic detection, clear the frequency or enter 0 and click **Update peaks**.
+Four samples/cycle is also a **viewer heuristic**, not a sampling theorem or an amplitude-accuracy guarantee. Sparse amplitudes can miss true extrema, and aliasing or harmonics can affect observed repetition. The rate describes the **saved CSV timestamps**, not necessarily the oscilloscope's internal ADC. Neither a filter nor the guide restores unsaved values. Save a denser waveform for reliable cycle amplitudes.
+
+In the latest screenshot, the visible status says **Automatic detection**, with 91 maxima and zero minima. It does not show an active 1 Hz guide. The large peaks appear roughly two seconds apart; retaining only those would give about **0.5 Hz**, not 1 Hz, if the time coordinates are correct. This is a visual observation, not a numerical diagnosis of the original CSV. The original file is needed to resolve the disagreement with the known excitation setting.
 
 ### Expected period and tolerance (normal guided mode)
 
@@ -186,14 +189,15 @@ Applied frequency, period tolerance and noise threshold persist across signal/ca
 
 ### Automatic mode
 
-Leave applied frequency blank or enter **0**, then click **Update peaks**. The automatic controls become active:
+Leave applied frequency blank or enter **0**, then click **Update peaks** or press **Enter**. The active-mode label confirms the setting:
 
-- **Auto: min peak spacing (s):** minimum time separation between retained maxima; defaults are 0.08 s for force/counts and 0.02 s for voltage.
-- **Auto: level threshold (× SD):** maxima must reach the full signal's mean plus this factor times its standard deviation; default 0.35.
+- **Auto: min peak spacing (s):** minimum separation of retained maxima; 0.08 s for force/counts and 0.02 s for voltage by default. Within this spacing the larger maximum is kept.
+- **Auto: min swing (× SD):** the SD multiplier in the amplitude-reversal threshold; default 0.35. This is no longer an absolute level relative to the mean.
+- **Noise threshold (% range):** provides the other amplitude threshold; the larger of the two is used. Raise it to suppress shallow shoulders or lower it if legitimate small swings disappear. The range and SD still describe the full capture, so a much larger transient can require threshold adjustment.
 
-An intervening minimum is accepted only if it is below the mean minus the SD threshold and its drop from **both** bounding maxima reaches the amplitude noise threshold. This rejects many false shoulder minima even without frequency guidance. Automatic frequency uses intervals between maxima with accepted troughs.
+The lowest trough between retained maxima is marked without a global-mean gate. Average extrema remain measured sample values. The frequency estimate describes observed repetition, which can differ from the physical excitation for complex or sparsely sampled waveforms. Constant, monotonic or incomplete waveforms may correctly have N/A frequency.
 
-Minimum spacing must be below the actual period to avoid rejecting real cycles. For example, the default 0.02 s voltage spacing is too large for a 100 Hz waveform; use frequency guidance or reduce the automatic spacing.
+Minimum spacing must be below the actual period to avoid rejecting real cycles. For example, 0.02 s is too large for a 100 Hz waveform. Detection runs on the complete selected capture and is cached; zoom selects markers and complete intervals without changing detection phase.
 
 ## 6. Filters
 
@@ -253,7 +257,7 @@ Raw and filtered signals each report:
 
 | Metric | Definition |
 |---|---|
-| Detected frequency | Reciprocal mean duration of accepted complete intervals wholly inside the visible X window |
+| Peak repetition (Hz) | Reciprocal mean duration of accepted complete intervals wholly inside the visible X window |
 | Avg. peak max | Mean of detected maximum values whose markers lie in the visible X window |
 | Avg. trough min | Mean of detected minimum values whose markers lie in the visible X window |
 | Absolute max / min | Extrema over every visible sample, including window endpoints |
@@ -261,7 +265,7 @@ Raw and filtered signals each report:
 
 Peak detection is cached for the **complete selected capture**. X zoom/pan changes the included extrema and complete intervals, so zooming does not create new boundary peaks or shift detection phase. Average extrema are computed separately; visible max/min counts can differ near window edges.
 
-`N/A` means insufficient accepted data for that metric. Sampling-limited mode deliberately reports N/A for frequency while retaining observed extrema and their averages. All metrics use the visible **X** interval, regardless of whether Y zoom clips part of the waveform. Hidden traces retain their numerical summaries. Red maxima and green minima belong to the **filtered** signal.
+`N/A` means insufficient accepted data for that metric. Sampling-limited mode reports an observed repetition estimate when a complete interval is resolved; it does not validate the excitation frequency. All metrics use the visible **X** interval, regardless of whether Y zoom clips part of the waveform. Hidden traces retain their numerical summaries. Red maxima and green minima belong to the **filtered** signal.
 
 ## 9. Two-point measurement
 
@@ -291,11 +295,11 @@ python shaker_csv_viewer.py --help
 
 | Symptom | What to check |
 |---|---|
-| Changing frequency appears to do nothing | Click **Update peaks**, inspect the detection status, and ensure the HTML was regenerated with version 1.2. Normal guidance may accept the same cycles after a small change. Sampling-limited mode shows observed extrema without validating their periods. The waveform itself is unchanged. |
-| Max/min disappear after entering 1 Hz; saved sample rate is 2.5 Hz | Regenerate the plot with version 1.2. It keeps observed extrema and shows a sampling warning. There are only 2.5 saved samples per expected cycle; frequency-validated peaks need denser saved data. |
+| Changing frequency appears to do nothing | Click **Update peaks**, inspect the detection status, and ensure the HTML was regenerated with version 1.3. Normal guidance may accept the same cycles after a small change. Sampling-limited mode shows observed extrema without validating their periods. The waveform itself is unchanged. |
+| Max/min disappear after entering 1 Hz; saved sample rate is 2.5 Hz | Regenerate the plot with version 1.3. It suppresses weak shoulders, retains resolved troughs, estimates observed repetition and shows a sampling warning. There are only 2.5 saved samples per expected cycle; frequency-validated peaks need denser saved data. |
 | Frequency controls affect force but apparently not scope | The same detector is used for both. Select the intended channel/capture, verify its waveform time span and unit, and inspect accepted/rejected intervals. Each capture is analyzed separately. |
 | No accepted cycles / N/A frequency | Check the applied frequency, period tolerance, noise threshold and capture duration. Complete cycles are required. Short captures, gaps or complex signals may be unsuitable. |
-| False shoulder minima in automatic mode | Enter the known excitation frequency and apply it. Inspect the amplitude threshold and markers. |
+| Two maxima per main swing / no minima with a different inactive baseline | Regenerate with version 1.3. Automatic detection now confirms amplitude reversals and no longer rejects troughs using the global mean. Inspect the amplitude thresholds. |
 | Voltage is constant, for example -0.261 V | Inspect the saved numeric data and acquisition configuration. A viewer cannot reconstruct variations that were never recorded. |
 | Old HTML still shows old controls | Regenerate it by selecting the CSV and pressing PLOT in the updated Python application. |
 | Missing NumPy/pandas/Plotly | Run `INSTALL_REQUIREMENTS.bat`, using the same Python environment as the launcher. |
@@ -327,12 +331,15 @@ The eleven Python checks cover exact project schemas, preservation of saved Newt
 
 JavaScript tests cover known-frequency signals, filter/threshold validation, constant signals, recording gaps, false shoulder peaks on an asymmetric waveform, flat minima, independently measured frequency, period-tolerance rejection, incorrect half/double frequency guides, partial cycles, stable markers across zoom, Y controls/slider/arrows/wheel, cursor measurements, channel/capture selection and CSV export event handling. A separate scope-path case uses voltage-scale samples and negative waveform times and checks that applied-frequency changes affect markers and persist across capture/channel changes.
 
-Version 1.2 adds 1 Hz signals sampled at 2.5 samples/s across multiple sample phases and amplitude scales, plus a five-sample repeating spike pattern inspired by the latest screenshot. Tests check actual-sample extrema, frequency N/A, constant signals, Nyquist rejection, the real **Update peaks** handler, persistent sampling warnings, zoom-stable markers, filter reset, marker visibility and return to automatic mode. The source CSV behind that screenshot was not supplied, so these reproduce the sampling conditions rather than the exact recorded waveform.
+Regression tests include 1 Hz signals sampled at 2.5 samples/s across multiple sample phases and amplitude scales, plus a five-sample repeating spike pattern inspired by the latest screenshot. Tests check actual-sample extrema, measured peak repetition, constant signals, Nyquist rejection, the real **Update peaks** handler, persistent sampling warnings, zoom-stable markers, filter reset, marker visibility and return to automatic mode. The source CSV behind that screenshot was not supplied, so these reproduce the sampling conditions rather than the exact recorded waveform.
 
 These numerical and event-logic checks passed. The JavaScript suite uses a **Plotly/DOM adapter**, not a real browser. Actual desktop/browser rendering was not exercised in the development runtime. Synthetic data matches the inspected export schemas; it is not a substitute for checking markers against your own recordings. The supplied waveform screenshot motivated the shoulder-minimum regression case, but its underlying CSV was not available for exact numerical reproduction.
 
+Version 1.3 additionally reproduces a long inactive baseline followed by repeated large peaks and small shoulders. The previous algorithm returned 200 maxima, zero minima and no frequency; the updated algorithm returns 99 main maxima, 98 intervening minima and the synthetic waveform's measured 0.5 Hz. Checks cover amplitude-offset invariance, pending settings, Enter-to-apply, and a rejected frequency retaining the previous active setting. These are synthetic regression results, not a claim that the screenshot's unprovided CSV has been tested.
+
 ## 13. Version history
 
+- **1.3:** amplitude-reversal automatic/sparse detection, removal of the global-mean minimum gate, suppression of weak shoulder maxima, restored sparse peak-repetition estimates, input/observed mismatch diagnostics, explicit active/pending settings, Enter-to-apply, Persian guide and baseline regression tests.
 - **1.2:** fixes disappearing markers for sparsely saved waveforms using explicit sampling-limited observed extrema; adds persistent peak diagnostics beside the controls, saved samples per expected cycle, and sparse-data regression checks. Retains strict guidance for normally sampled captures.
 - **1.1:** applied-frequency cycle guidance, editable period tolerance/noise threshold, stronger automatic minimum rejection, plateau handling, full-capture detection cached across zoom, vertical Y slider/arrows/wheel, and analysis settings in exported CSV.
 - **1.0:** standalone file selector, project/legacy CSV readers, separate scope capture selection, raw/filtered plotting, RC filters, visible metrics, axis controls, two-point measurements and HTML/CSV export.
